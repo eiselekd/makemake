@@ -142,7 +142,7 @@ sub readdef {
 	my $f = template::trim($1);
 	my $aproj = eval("{".template::trim($2)."}");
 	my @cinc = @{$$aproj{CINC}} or ();
-	my $genv = new genenv({'cflags'=>[],'ldflags'=>[]});
+	my $genv = new genenv({'cflags'=>[CFLAGS],'ldflags'=>[]});
 	$$genv{'pdir'}="$dir/$f";
 	$$genv{'pdirbuild'}="$dir/$f/obj";
 	my @makeinc = ();
@@ -150,7 +150,6 @@ sub readdef {
 	my $groot = "";
 	
 	if ($f eq 'OPTIONS') {
-	  
 	  next;
 	}
 
@@ -239,9 +238,9 @@ sub readdef {
 		if (exists($$a{'gen'})) {
 		  my $f = $$a{'gen'}{'from'};
 		  $g{$b}{$f}{'gen'} = {};
+		  #print("#########\n");
 		  mergeHashRec($g{$b}{$f}{'gen'},$$a{'gen'});
 		}
-		
 		
 		#if (defined($g{$from}{$to}{'dep'})) {
 		#  push(@dep,@{$g{$from}{$to}{'dep'}}) ;
@@ -271,7 +270,7 @@ sub readdef {
 	    
 	    foreach my $e (@e) {
 		my ($from,$a0,$a1) = @$e; my @a = (); my @to = ();
-		my @dep = (); my @to = ();
+		my @dep = (); my @to = (); my @gen = (); 
 		my %link = (), $link_opt = (new optsnippet({})), %compile = ();
 		foreach my $to (keys(%{$g{$from}})) {
 		  #print("to $to\n");
@@ -297,7 +296,7 @@ sub readdef {
 		
 		my   @rules = ();
 		push(@rules,map { new textsnipppet({'_up'=>$compile{$_}},"\tgcc {{['gather'=>1,'join'=>' ','wrap'=>'\$(^)']cflags}} -c -o \$@ {{\$<}}\n") } keys(%compile)); # one cmd per .o
-		push(@rules,map { new textsnipppet({'_up'=>   $link_opt},"\tar cr \$@ {{\$^}}\n")                } [keys(%link)]) if (scalar(keys(%link))); # only one link
+		push(@rules,map { new textsnipppet({'_up'=>   $link_opt},"\tar cr \$@ {{\$^}}\n") } [keys(%link)]) if (scalar(keys(%link))); # only one link
 		push(@rules,map { new textsnipppet({},"\t$_") } @gen) if (scalar(@gen));
 		
 		my $r = new makefile_rule({'rules'=>[@rules],'target'=>"${from}",'rulesdep'=>[keys(%link),keys(%compile),@dep]});

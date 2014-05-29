@@ -207,6 +207,7 @@ sub snippet {
     if ($$a{'gather'}) {
       $v = [];
       $self->getValue($m,$v);
+      $v = [grep { defined($_) } @$v];
       print("----\n".join(",",@$v)."\n");
     }
     my $pre = "",$post = "";
