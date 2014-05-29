@@ -18,9 +18,20 @@ e.a { genflags=>[['{{[post=>"/"]pdir}}Makefile.e.flags.{{os.make.ext}}.mk', {'tr
 
 ]
 
-
 libe.a : [
      parse.c 
+     tok.c 
 ]
- 
-      
+
+libgtest.a : [
+     perl/tmp-gtest/gtest-1.7.0/src/gtest-all.cc
+]
+
+
+
+test1.exe : [
+     e.a 
+     libgtest.a 
+     libe.a
+     perl/t/test1.cpp 
+]
