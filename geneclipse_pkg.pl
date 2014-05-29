@@ -527,15 +527,19 @@ sub getRaw { return $c; }
 
 sub setProjectPath {
   my ($self,$p) = @_; my $cnt;
-  if (!($$self{'target'} =~ /all/ || $$self{'target'} =~ /clean/)) {
+  $$self{'target'} = $$self{'_target'};
+  if (!($$self{'_target'} =~ /^all$/ || $$self{'_target'} =~ /^clean$/)) {
     my $o = $$self{'target'};
-    $$self{'target'} = File::Spec->abs2rel(File::Spec->rel2abs($$self{'target'}),File::Spec->rel2abs($p));
-    print ($$self{'target'}." => ".$o."\n") if ($::OPT{dbgtrans});
+    $$self{'target'} = File::Spec->abs2rel(File::Spec->rel2abs($$self{'_target'}),File::Spec->rel2abs($p));
+    print ("trans:".$o."(base:$p) => ".$$self{'target'}."\n") if ($::OPT{dbgtrans});
   }
   $$self{'dependencies'} = 
     join(" ", map { 
-      File::Spec->abs2rel(File::Spec->rel2abs($_),File::Spec->rel2abs($p));
-    } (@{$$self{'rulesdep'}}));
+      my $o = $_;
+      my $n = File::Spec->abs2rel(File::Spec->rel2abs($_),File::Spec->rel2abs($p));
+      print ("trans:".$o."(base:$p) => ".$n."\n") if ($::OPT{dbgtrans});
+      $n
+    } (@{$$self{'_rulesdep'}}));
 }
 
 package makefile;

@@ -299,15 +299,15 @@ sub readdef {
 		push(@rules,map { new textsnipppet({'_up'=>   $link_opt},"\tar cr \$@ {{\$^}}\n") } [keys(%link)]) if (scalar(keys(%link))); # only one link
 		push(@rules,map { new textsnipppet({},"\t$_") } @gen) if (scalar(@gen));
 		
-		my $r = new makefile_rule({'rules'=>[@rules],'target'=>"${from}",'rulesdep'=>[keys(%link),keys(%compile),@dep]});
+		my $r = new makefile_rule({'rules'=>[@rules],'_target'=>"${from}",'_rulesdep'=>[keys(%link),keys(%compile),@dep]});
 		$m->addPart($r);
 	    }
 	    
 	    #$m->addRule($brule);
 	    push(@cleans,"${nar}");
 	    
-	    $m->addPart(new makefile_rule({'rules'=>"",'target'=>'all','rulesdep'=>["${nar}"]}));
-	    $m->addPart(new makefile_rule({'rules'=>[map { "\trm -rf {{file".$_."elif}}\n" } @cleans],'target'=>'clean'}));
+	    $m->addPart(new makefile_rule({'rules'=>"",'_rulesdep'=>["${nar}"],                        '_target'=>'all'}));
+	    $m->addPart(new makefile_rule({'rules'=>[map { "\trm -rf {{file".$_."elif}}\n" } @cleans],'_target'=>'clean'}));
 	    $m->saveTo();
 	    
 	} else{
