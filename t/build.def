@@ -1,0 +1,14 @@
+e.a { CFLAGS=>'PERL_CCOPTS', 'LDFLAGS'=>PERL_LDOPTS,
+      genflags=>['{{[post=>"/"]pdir}}Makefile.e.flags.mk', {'trim'=>1},
+                 "PERL_CCOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ccopts`
+	          PERL_LDOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ldopts`
+                 "],
+      CINC=>['perl'] }
+: [
+     {{[post=>'/']pdir}}e.c : {
+       'dep' => ['perl/e.xs'],
+       'gen' => { 'cmd' => "{{PERL}} {{PERLLIB}}/ExtUtils/xsubpp -typemap {{PERLLIB}}/ExtUtils/typemap -typemap typemap {{file perl/e.xs elif}} -output \$@"  } 
+     }
+
+     parse.c
+]
