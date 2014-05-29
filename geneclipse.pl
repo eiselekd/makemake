@@ -11,7 +11,7 @@ require "$Bin/geneclipse_pkg.pl";
 $defos = "posix";
 $defos = "win" if ($^O eq 'MSWin32');
 
-$id                         = qr'[a-zA-Z\._]+';
+$id                         = qr'[a-zA-Z0-9\._]+';
 $RE_balanced_squarebrackets = qr'(?:[\[]((?:(?>[^\[\]]+)|(??{$RE_balanced_squarebrackets}))*)[\]])'s;
 $RE_balanced_smothbrackets  = qr'(?:[\(]((?:(?>[^\(\)]+)|(??{$RE_balanced_smothbrackets}))*)[\)])'s;
 $RE_balanced_brackets       = qr'(?:[\{]((?:(?>[^\{\}]+)|(??{$RE_balanced_brackets}))*)[\}])'s;
@@ -51,7 +51,6 @@ sub getAllEdges {
 }
 sub getAllEdges_to   { my ($g,$to) = @_; return grep { cmpNode($_[0],$to) } getAllEdges($g); }
 sub getAllEdges_from { my ($g,$to) = @_; return grep { cmpNode($_[1],$to) } getAllEdges($g); }
-
 
 # deep traverse, return all edges starting from node $e. For each edge call $f
 # g: graph, n: nodes
@@ -131,18 +130,93 @@ sub mergeHashRec {
   }
 }
 
+sub setDom {
+  my ($nodes,$dom,$n) = @_;
+  $nodes{$n}{'domain'} = [] if (!exists($nodes{$n}{'domain'}));
+  push(@{$nodes{$n}{'domain'}},$dom);
+}
+		  
+sub gen_makefile {
+  my ($g,$nodes,$genv,$dir,$f,$n,$nar) = @_;
+  my %g = %$g;
+  my %nodes = %$nodes;
+  
+  my $m = new makefile({'_up'=>$genv,'name'=>$n,'pdir'=>"$dir/$n"}); # ,'dos'=>1
+  
+  foreach my $f (@makeinc) {
+    my $rf = $f;
+    $m->addPart(new textsnipppet({'_up'=>$m},"{{os.make.inc}} {{file${rf}elif}}\n"));
+  }
+  
+  my $cinc = "CFLAGS= -g  ".join(" ",map { "-I {{file".$_."elif}} " } @cinc)."\n";
+  #print("cinc:$cinc\n");
+  $m->addPart(new textsnipppet({'_up'=>$m},$cinc));
+  
+  my @e = grep { !isLeaf(\%g,$$_[0]) } deepSearch(\%g, \%nodes, $nar);
+  
+  foreach my $e (@e) {
+    my ($from,$a0,$a1) = @$e; my @a = (); my @to = ();
+    my @dep = (); my @to = (); my @gen = (); 
+    my %link = (), $link_opt = (new optsnippet({})), %compile = ();
+    foreach my $to (keys(%{$g{$from}})) {
+      #print("to $to\n");
+      push(@to,$to);
+      
+      if (exists($g{$from}{$to}{'linklib'})) {
+	$link{$to} = new optsnippet({}) if (!defined($link{$to}));
+	mergeHashRec($link_opt,$g{$from}{$to}{'link'}); # union linkoptions
+      }
+      if (exists($g{$from}{$to}{'link'})) {
+	$link{$to} = new optsnippet({}) if (!defined($link{$to}));
+	mergeHashRec($link_opt,$g{$from}{$to}{'link'}); # union linkoptions
+      }
+      if (exists($g{$from}{$to}{'compile'})) {
+	$compile{$to} = new optsnippet({}) if (!defined($compile{$to}));
+	mergeHashRec($compile{$to},$g{$from}{$to}{'compile'});
+	push(@cleans,$from);
+      }
+      if (defined($g{$from}{$to}{'dep'})) {
+	push(@dep,@{$g{$from}{$to}{'dep'}}) ;
+      }
+      if (exists($g{$from}{$to}{'gen'}{'cmd'})) {
+	push(@gen,$g{$from}{$to}{'gen'}{'cmd'});
+	push(@cleans,$from);
+      }
+    }
+    print ("$from(=>".join(",",@to).") : ".join(" ", (keys(%link),keys(%compile), @dep) )."\n");
+    
+    my   @rules = ();
+    push(@rules,map { new textsnipppet({'_up'=>$compile{$_}},"\t{{cc}} {{['gather'=>1,'join'=>' ','wrap'=>'\$(^)']cflags}} -c -o \$@ {{\$<}}\n") } keys(%compile)); # one cmd per .o
+    push(@rules,map { new textsnipppet({'_up'=>   $link_opt},"\tar cr \$@ {{\$^}}\n") } [keys(%link)]) if (scalar(keys(%link))); # only one link
+    push(@rules,map { new textsnipppet({},"\t$_") } @gen) if (scalar(@gen));
+    
+    my $r = new makefile_rule({'rules'=>[@rules],'_target'=>"${from}",'_rulesdep'=>[keys(%link),keys(%compile),@dep]});
+    $m->addPart($r);
+  }
+  
+  push(@cleans,"${nar}");
+  
+  $m->addPart(new makefile_rule({'rules'=>"",'_rulesdep'=>["${nar}"],                        '_target'=>'all'}));
+  $m->addPart(new makefile_rule({'rules'=>[map { "\trm -rf {{file".$_."elif}}\n" } @cleans],'_target'=>'clean'}));
+  $m->saveTo();
+  
+}
+
 sub readdef {
-    my ($fn) = @_; 
+    my ($fn,$o) = @_; 
     my $dir = $OPT{'dir'};
     $def = geneclipse::readfile($fn);
+    
+    my %g_dep = ();
+    my %g = ();      # graph edges 
+    my %nodes = ();  # nodes
+    
     while($def =~ /($id)\s*$RE_balanced_brackets?\s*:\s*$RE_balanced_squarebrackets/g) {
         
-	my %g = ();      # graph edges 
-	my %nodes = ();  # nodes
 	my $f = template::trim($1);
 	my $aproj = eval("{".template::trim($2)."}");
 	my @cinc = @{$$aproj{CINC}} or ();
-	my $genv = new genenv({'cflags'=>[CFLAGS],'ldflags'=>[]});
+	my $genv = new genenv({'_up'=>$o,'cflags'=>[CFLAGS],'ldflags'=>[]});
 	$$genv{'pdir'}="$dir/$f";
 	$$genv{'pdirbuild'}="$dir/$f/obj";
 	my @makeinc = ();
@@ -154,20 +228,27 @@ sub readdef {
 	}
 
 	foreach my $k (keys %{$aproj}) {
-	    $$genv{$k} = $$aproj{$k};
+	  $$genv{$k} = $$aproj{$k};
 	}
-	
 	my $b = template::trim($3);
-	if ($f =~ /(.+\.a)$/ && length($b)) {
-	    my $n = $1;
+	  
+	if (length($b) && 
+	    (($f =~ /(.+\.a)$/) || 
+	     ($f =~ /(.+\.exe)$/))) {
+	   
+	    my $n = template::trim($1);
 	    $b =~ s/\\\n//g;
 	    my @b = split("[\\n]+",$b);
 	    #print ("$n:\n");
-	    my $p = new project({'name'=>$n,'pdir'=>"$dir/$n"});
+	    my $p = new project({'_up'=>$genv,'name'=>$n,'pdir'=>"$dir/$n"});
 	    
 	    mergeHashRec($p,$aproj);
-
-	    my $nar = $p->pdir_build("${n}");
+	    
+	    @{$g{'all'}{$n}}{qw(build)} = ({});
+	    my $nar = $p->pdir_lib($n);
+	    if ($nar ne $n) {
+	      @{$g{$n}{$nar}}{qw(arlias)} = ({});
+	    }
 	    $groot = $nar;
 	    
 	    my $i = 0;
@@ -216,19 +297,21 @@ sub readdef {
 		# $a == attributes
 		my $o = undef;
 		if ($b =~ /^(.*)\.c$/ || $b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/) {
-		    $o = $p->pdir_build(basename(${1}).".o");
-		    @{$g{$nar}{$o}}{qw(link)} = ({});
-		    @{$g{$o}{$b}}{qw(compile dep)} = ({},[]);
-		    #print(Dumper($a));
-		    mergeHashRec($g{$o}{$b}{'compile'},$a,['cflags','ldflags']);
-		    #print(Dumper($g{$o}{$b}{'compile'}));
-		    my $d = new files({'file'=>$b});
-		    $p->add($d);
+		  $cc = 'gcc';
+		  $cc = 'g++' if ($b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/);
+		  $o = $p->pdir_build(basename(${1}).".o");
+		  setDom(\%nodes,$n,$o);
+		  @{$g{$nar}{$o}}{qw(link)} = ({});
+		  @{$g{$o}{$b}}{qw(compile dep)} = ({'cc'=>$cc},[]);
+		  mergeHashRec($g{$o}{$b}{'compile'},$a,['cflags','ldflags']);
+		  my $d = new files({'file'=>$b});
+		  $p->add($d);
 		} elsif ($b =~ /^(.*)\.a$/) {
-		    @{$g{$nar}{$b}}{qw(linklib)} = ({});
+		  @{$g{$nar}{$b}}{qw(linklib)} = ({});
 		}
-		#mergeHashRec($g{$b}{$b},$a);
 		
+		
+		#mergeHashRec($g{$b}{$b},$a);
 		
 		
 		#if ($g{$o}{$b}) {
@@ -237,7 +320,7 @@ sub readdef {
 		
 		if (exists($$a{'gen'})) {
 		  my $f = $$a{'gen'}{'from'};
-		  $g{$b}{$f}{'gen'} = {};
+		  @{$g{$b}{$f}}{qw(gen dep)} = ({},[$f]);
 		  #print("#########\n");
 		  mergeHashRec($g{$b}{$f}{'gen'},$$a{'gen'});
 		}
@@ -248,6 +331,8 @@ sub readdef {
 
 	    }
 	    
+	    
+	    
 	    $p->saveTo();
 	    my $c = new cproject({'name'=>$n,'pdir'=>"$dir/$n"});
 	    $c->saveTo();
@@ -255,60 +340,8 @@ sub readdef {
 	    #print ("Dep of $n:\n");
 	    my @h = getNode(\%g,$n,'link');
 	    #print ("=".Dumper(\@h));
-	    my $m = new makefile({'_up'=>$genv,'name'=>$n,'pdir'=>"$dir/$n"}); # ,'dos'=>1
 	    
-	    foreach my $f (@makeinc) {
-	      my $rf = $f;
-	      $m->addPart(new textsnipppet({'_up'=>$m},"{{os.make.inc}} {{file${rf}elif}}\n"));
-	    }
-	    
-	    my $cinc = "CFLAGS= -g  ".join(" ",map { "-I {{file".$_."elif}} " } @cinc)."\n";
-	    #print("cinc:$cinc\n");
-	    $m->addPart(new textsnipppet({'_up'=>$m},$cinc));
-	    
-	    my @e = grep { !isLeaf(\%g,$$_[0]) } deepSearch(\%g, \%nodes, $nar);
-	    
-	    foreach my $e (@e) {
-		my ($from,$a0,$a1) = @$e; my @a = (); my @to = ();
-		my @dep = (); my @to = (); my @gen = (); 
-		my %link = (), $link_opt = (new optsnippet({})), %compile = ();
-		foreach my $to (keys(%{$g{$from}})) {
-		  #print("to $to\n");
-		  push(@to,$to);
-		  if (exists($g{$from}{$to}{'link'})) {
-		    $link{$to} = new optsnippet({}) if (!defined($link{$to}));
-		    mergeHashRec($link_opt,$g{$from}{$to}{'link'}); # union linkoptions
-		  }
-		  if (exists($g{$from}{$to}{'compile'})) {
-		    $compile{$to} = new optsnippet({}) if (!defined($compile{$to}));
-		    mergeHashRec($compile{$to},$g{$from}{$to}{'compile'});
-		    push(@cleans,$from);
-		  }
-		  if (defined($g{$from}{$to}{'dep'})) {
-		    push(@dep,@{$g{$from}{$to}{'dep'}}) ;
-		  }
-		  if (exists($g{$from}{$to}{'gen'}{'cmd'})) {
-		    push(@gen,$g{$from}{$to}{'gen'}{'cmd'});
-		    push(@cleans,$from);
-		  }
-		}
-		print ("$from(=>".join(",",@to).") : ".join(" ", (keys(%link),keys(%compile), @dep) )."\n");
-		
-		my   @rules = ();
-		push(@rules,map { new textsnipppet({'_up'=>$compile{$_}},"\tgcc {{['gather'=>1,'join'=>' ','wrap'=>'\$(^)']cflags}} -c -o \$@ {{\$<}}\n") } keys(%compile)); # one cmd per .o
-		push(@rules,map { new textsnipppet({'_up'=>   $link_opt},"\tar cr \$@ {{\$^}}\n") } [keys(%link)]) if (scalar(keys(%link))); # only one link
-		push(@rules,map { new textsnipppet({},"\t$_") } @gen) if (scalar(@gen));
-		
-		my $r = new makefile_rule({'rules'=>[@rules],'_target'=>"${from}",'_rulesdep'=>[keys(%link),keys(%compile),@dep]});
-		$m->addPart($r);
-	    }
-	    
-	    #$m->addRule($brule);
-	    push(@cleans,"${nar}");
-	    
-	    $m->addPart(new makefile_rule({'rules'=>"",'_rulesdep'=>["${nar}"],                        '_target'=>'all'}));
-	    $m->addPart(new makefile_rule({'rules'=>[map { "\trm -rf {{file".$_."elif}}\n" } @cleans],'_target'=>'clean'}));
-	    $m->saveTo();
+	    gen_makefile(\%g,\%nodes,$genv,$dir,$f,$n,$nar);
 	    
 	} else{
 	  
@@ -339,9 +372,10 @@ $bdir = ($OPT{'dir'} = $OPT{'dir'} || 'tmp');
 $defos = $OPT{'os'} if (defined($OPT{'os'}));
 `mkdir -p $bdir`;
 print("bdir : $bdir\ndefos: [".join(",",@{$::OPT{'os'}})."]\n") if ($OPT{'verbose'});
+my $o = new optsnippet(\%OPT);
 
 
 $def = $ARGV[0];
-readdef($def);
+readdef($def,$o);
 
 

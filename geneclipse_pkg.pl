@@ -119,6 +119,13 @@ sub pdir_build {
   return $p."/".$n;
 }
 
+sub pdir_lib {
+  my ($self,$n) = @_;
+  my $p = $self->getValue('dir');
+  return $p."/lib/$n";
+}
+
+
 sub filesnippet {
     my ($self,$m) = @_;
     $m = trim($m);
@@ -616,7 +623,6 @@ CMD
       $c->saveTo();
     }
     
-    
     $self->remove($def);
   }
   
@@ -626,8 +632,7 @@ CMD
   if (! -f $$self{'pdir'}."/Makefile") {
     my $c = new textsnipppet({'_up'=>$self,'pdir'=>$$self{'pdir'},'fname'=>'Makefile'},$p);
     $c->saveTo();
-  }
-  
+  }  
 }
 
 package osenv;
