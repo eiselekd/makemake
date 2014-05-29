@@ -168,18 +168,28 @@ sub exesnippet {
 }
 
 sub getValue {
-    my ($self,$m) = @_;
+    my ($self,$m,$r) = @_;
     $m = trim($m);
     #print ("resolve $m\n");
     $m = $self->doSub($m);
-    return $$self{$m} if (exists($$self{$m}));
-    if (defined($$self{'_up'}) && (ref $$self{'_up'} eq 'ARRAY')) {
+    if (exists($$self{$m})) {
+      return $$self{$m} if (!defined($r));
+      if (ref $$self{$m} eq 'ARRAY') {
+	push(@$r,@{$$self{$m}});
+      } else {
+	push(@$r,$$self{$m});
+      }
+    }
+    if (defined($$self{'_up'}) && (ref $$self{'_up'} eq ref [])) {
       foreach my $a (@{$$self{'_up'}}) {
-	my $v = $a->getValue($m);
-	return $v if (defined($v));
+	my $v = $a->getValue($m,$r);
+	return $v if (defined($v) && !defined($r));
       }
     } else {
-      return $$self{'_up'}->getValue($m) if (defined($$self{'_up'}));
+      if (defined($$self{'_up'})){
+	my $v = $$self{'_up'}->getValue($m,$r);
+	return $v if (!defined($r));
+      }
     }
     return undef;
 }
@@ -194,14 +204,25 @@ sub snippet {
     }
     $m = trim($m);
     my $v = $self->getValue($m); 
-    
+    if ($$a{'gather'}) {
+      $v = [];
+      $self->getValue($m,$v);
+      print("----\n".join(",",@$v)."\n");
+    }
+    my $pre = "",$post = "";
+    if ($$a{'wrap'}) {
+      my $w = $$a{'wrap'};
+      my $i = index($w,'^');
+      ($pre,$post) = (substr($w,0,$i), substr($w,$i+1));
+    }
     return (exists($$a{'post'}) ? "" : "<undef>") if (!defined($v));
     if (ref $v eq 'ARRAY') {
-	my @a = map { UNIVERSAL::can($_,'subTemplate') ? $_->subTemplate() : $_ } @{$$self{$m}};
+	my @a = map { UNIVERSAL::can($_,'subTemplate') ? $_->subTemplate() : $_ } @{$v};
 	my $b = $$a{'join'} || "";
+      	@a = map { $pre.$_.$post } @a; 
 	$r = join($b,@a);
     } else {
-	$r = $$a{'pre'}.$v.$$a{'post'};
+	$r = $pre.$$a{'pre'}.$v.$$a{'post'}.$post;
     }
     $r = trim($r) if (exists($$a{'trim'})) ;
     return $r;
@@ -229,6 +250,14 @@ sub genFlagsFile {
     my $g2 = $self->doSub($g);
     $g2 = join("\n",map { template::trim($_) } split("\\n",$g2)) if ($$a{'trim'});
     geneclipse::writefile($fn, $g2);
+}
+
+package optsnippet;
+@ISA = ('template','geneclipse');
+sub new {
+    my ($class,$self) = @_;
+    bless $self, $class;
+    return $self;
 }
 
 package textsnipppet;
@@ -490,7 +519,7 @@ MAKEFILERULE
 sub new {
     my ($class,$self) = @_;
     bless $self, $class;
-    
+    map { my $r = $_; $$r{'_up'} = [grep { defined($_) } ($$r{'_up'},$self)] } @{$$self{'rules'}};
     return $self;
 }
 sub getRaw { return $c; }
@@ -533,6 +562,7 @@ sub new {
 sub addPart {
     my ($self,$r) = @_;
     push(@{$$self{'parts'}},$r);
+    $$r{'_up'} = [grep { defined($_) } (($$r{'_up'}),$self)];
 }
 
 sub getRaw { return $c; }
@@ -563,7 +593,6 @@ sub saveTo {
     if (ref($g_) eq ref []) {
       my @l = @{$$self{'makeinc'}};
       for my $g (@$g_) {
-	print("-------\n");
       	my ($fn,$a,$g) = @{$g};
 	$fn = $self->doSub($fn);
 	$self->genFlagsFile($fn,$a,$g);
@@ -624,18 +653,14 @@ $oswin_com    = new osenv(
     '$<' => '$**',
     '$^' => '$**'}
 );
-$oslinux_com  = new osenv(
-   {'_up'=>$gmake}
-);
-$osmac_com    = new osenv(
-   {'_up'=>$gmake}
-);
-$os = { 
-       'cygwin' => $oswin_cygwin,
-       'com'    => $oswin_com,
-       'linux'  => $oslinux_com,
-       'mac'    => $osmac_com 
-      };
+$oslinux_com  = new osenv({'_up'=>$gmake});
+$osmac_com    = new osenv({'_up'=>$gmake});
+$os = {
+  'cygwin'    => $oswin_cygwin,
+  'com'       => $oswin_com,
+  'linux'     => $oslinux_com,
+  'mac'       => $osmac_com
+};
 
 package genenv;
 @ISA = ('template','geneclipse');
@@ -673,7 +698,4 @@ sub subTemplate {
   $self->template::subTemplate();
 }
 
-
-
 1;
-
