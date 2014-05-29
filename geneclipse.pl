@@ -8,6 +8,9 @@ use Cwd 'abs_path';
 use lib "$Bin/../lib";
 require "$Bin/geneclipse_pkg.pl";
 
+$defos = "posix";
+$defos = "win" if ($^O eq 'MSWin32');
+
 $id                         = qr'[a-zA-Z\._]+';
 $RE_balanced_squarebrackets = qr'(?:[\[]((?:(?>[^\[\]]+)|(??{$RE_balanced_squarebrackets}))*)[\]])'s;
 $RE_balanced_smothbrackets  = qr'(?:[\(]((?:(?>[^\(\)]+)|(??{$RE_balanced_smothbrackets}))*)[\)])'s;
@@ -91,11 +94,16 @@ sub deepSearch_f {
     }
 }
 
+sub isLeaf {
+    my ($g,$from) = @_;
+    scalar(keys($$g{$from})) == 0;
+}
+
 sub deepSearch {
     my ($g,$n,$e) = @_;
     my @r = ();
     print ("Graph from $e:\n");
-    deepSearch_f($g,$n,$e, sub { my ($g,$n,$r,$from,$deep) = @_; push(@$r,$from); return 0;}, \@r); 
+    deepSearch_f($g,$n,$e, sub { my ($g,$n,$r,$from,$deep) = @_; push(@$r,[$from]); return 0;}, \@r); 
     return @r;
 }
 
@@ -135,13 +143,6 @@ sub readdef {
 	my @makeinc = ();
 	my @cleans = ();
 	
-	if (defined($$aproj{'genflags'} )) {
-	    my ($fn,$a,$g) = @{$$aproj{'genflags'}};
-	    $fn = $genv->doSub($fn);
-	    push(@makeinc,$fn);
-	    #print("F:$fn\n");
-	    $genv->genFlagsFile($fn,$a,$g);
-	}
 	foreach my $k (keys %{$aproj}) {
 	    $$genv{$k} = $$aproj{$k};
 	}
@@ -154,6 +155,9 @@ sub readdef {
 	    my @b = split("[\\n]+",$b);
 	    #print ("$n:\n");
 	    my $p = new project({'name'=>$n,'pdir'=>"$dir/$n"});
+	    
+	    mergeHashRec($p,$aproj);
+
 	    my $nar = $p->pdir_build("${n}");
 
 	    my $i = 0;
@@ -209,15 +213,19 @@ sub readdef {
 		} elsif ($b =~ /^(.*)\.a$/) {
 		    @{$g{$nar}{$b}}{qw(linklib)} = ({});
 		}
-		#if (defined($$a{'gen'})) {
-		#print Dumper($$a{'gen'});
-		$g{$b}{$b}{'gen'} = {} if (!exists($g{$b}{$b}{'gen'}));
+		#mergeHashRec($g{$b}{$b},$a);
 		
-		mergeHashRec($g{$b}{$b},$a);
+		if (exists($$a{'gen'})) {
+		  my $f = $$a{'gen'}{'from'};
+		  $g{$b}{$f}{'gen'} = {};
+		  mergeHashRec($g{$b}{$f}{'gen'},$$a{'gen'});
+		}
 		
-		#print("::".Dumper(\%g));
+		
+		#if (defined($g{$from}{$to}{'dep'})) {
+		#  push(@dep,@{$g{$from}{$to}{'dep'}}) ;
 		#}
-		#print (Dumper(\%g));
+
 	    }
 	    
 	    $p->saveTo();
@@ -237,37 +245,21 @@ sub readdef {
 	    print("cinc:$cinc\n");
 	    $m->addPart(new textsnipppet({'_up'=>$m},$cinc));
 	    
-	    my $brule = new makefile_rule({'_up'=>$m,'rules'=>"\tar cr \$@ \$**\n",'target'=>"$nar",'rulesdep'=>[]});
+	    my @e = grep { !isLeaf(\%g,$$_[0]) } deepSearch(\%g, \%nodes, $nar);
 	    
-	    #foreach my $_l ( @h ) {
-	#	my ($ln, $_l) = @$_l;
-	#	print("-------\nFrom $ln\n");
-	#	foreach my $i (getNode(\%g,$ln,['gen','compile','dep'])) {
-	#	    print " + ".Dumper($i);
-	#	    my ($tgt,$a) = @$i;
-	#	    push(@{$$brule{'rulesdep'}},$tgt);
-	#	    #print ("$tgt: ".join(" ",map { $$_[0] } (@{$a}))."\n");
-	#	    #print ("\tgcc \$(CFLAGS) -c -o \$@ \$^\n");
-	#	    #print ("$tgt.dep: ".join(" ",map { $$_[0] } (@{$a}))."\n");
-	#	    #print ("\tgcc \$(CFLAGS) -MT $tgt -MM -c -o \$@ \$^\n");
-	#	    $m->addRule(new makefile_rule({'rules'=>"\tgcc \$(CFLAGS) -c -o \$@ \$**",'target'=>$tgt,'rulesdep'=>[map { $$_[0] } (@{$a})]}));
-	#	    $m->addRule(new makefile_rule({'rules'=>"\tgcc \$(CFLAGS) -MT $tgt -MM -c -o \$@ \$**\n",'target'=>"$tgt.dep",'rulesdep'=>[map { $$_[0] } (@{$a})]}));
-	#	}
-	#    }
-	    
-	    my @e = deepEdge(\%g, \%nodes, $nar);
 	    foreach my $e (@e) {
-		my ($from,$to) = @$e; my @a = (); my @to = ();
-		my @dep = ();
+		my ($from,$a0,$a1) = @$e; my @a = (); my @to = ();
+		my @dep = (); my @to = ();
 		my %link = (), %compile = ();
 		foreach my $to (keys(%{$g{$from}})) {
+		  #print("to $to\n");
+		  push(@to,$to);
 		    if (exists($g{$from}{$to}{'link'})) {
 			$link{$to} = 1;
 		    }
 		    if (exists($g{$from}{$to}{'compile'})) {
 			$compile{$to} = 1;
 			push(@a,"gcc \$(CFLAGS) -MT $tgt -MM -c -o \$@ \$^");
-			push(@to,$to);
 			push(@cleans,$from);
 		    }
 		    if (defined($g{$from}{$to}{'dep'})) {
@@ -278,10 +270,10 @@ sub readdef {
 		      push(@cleans,$from);
 		    }
 		}
-		print ("$from : ".join(" ", (keys(%link),keys(%compile), @dep) )."\n");
+		print ("$from(=>".join(",",@to).") : ".join(" ", (keys(%link),keys(%compile), @dep) )."\n");
 		my @rules = ();
 		if (scalar(keys(%link))) {
-		    push(@rules,("\tar cr \$@ \$**\n"));
+		    push(@rules,("\tar cr \$@ {{\$^}}\n"));
 		}
 		if (scalar(keys(%compile))) {
 		    push(@rules,("\tgcc \$(CFLAGS) -c -o \$@ {{\$<}}\n"));
@@ -304,13 +296,14 @@ sub readdef {
 	    #      2. output nocyg.bat start if Make
 	    
 	} else{
+	  
 	}
-	
-	
     }
 }
 
 sub usage { print("usage: $0 <infiles> [--quite|--verbose]
+    --os=[win,cygwin,posic] : select dest os (default: $defos)
+    --dbgtrans              : view path abs2rel transforms
 "); exit(1);
 }
 Getopt::Long::Configure(qw(bundling));
@@ -318,9 +311,14 @@ GetOptions(\%OPT,qw{
     quite|q+
     verbose|v+
     dir|d=s
+    os=s@
+    dbgtrans
 } ,@g_more) or usage(\*STDERR);
 $bdir = ($OPT{'dir'} = $OPT{'dir'} || 'tmp');
+$defos = $OPT{'os'} if (defined($OPT{'os'}));
 `mkdir -p $bdir`;
+print("bdir : $bdir\ndefos: [".join(",",@{$::OPT{'os'}})."]\n") if ($OPT{'verbose'});
+
 
 $def = $ARGV[0];
 readdef($def);

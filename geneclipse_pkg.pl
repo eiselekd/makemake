@@ -2,6 +2,18 @@ package geneclipse;
 use File::Basename;
 use File::Path;
 
+sub hasos {
+  my ($o) = @_;
+  $o = lc($o);
+  return 1 if (!exists($::OPT{'os'}));
+  if (ref $::OPT{'os'} eq ref []) {
+    my @e = grep { my $o0 = lc($_); $o =~ /$o0/ } @{$::OPT{'os'}};
+    #print("Found $o ".scalar(@e)."\n");
+    return scalar(@e) ;
+  }
+  return lc($::OPT{'os'}) eq $o;
+}
+
 sub appendTail {
   my ($self,$a) = @_;
   my $p = $self;
@@ -212,6 +224,12 @@ sub subTemplate {
     return $self->doSub($m);
 }
 
+sub genFlagsFile {
+    my ($self,$fn,$a,$g) = @_;
+    my $g2 = $self->doSub($g);
+    $g2 = join("\n",map { template::trim($_) } split("\\n",$g2)) if ($$a{'trim'});
+    geneclipse::writefile($fn, $g2);
+}
 
 package textsnipppet;
 @ISA = ('template','geneclipse');
@@ -482,7 +500,7 @@ sub setProjectPath {
   if (!($$self{'target'} =~ /all/ || $$self{'target'} =~ /clean/)) {
     my $o = $$self{'target'};
     $$self{'target'} = File::Spec->abs2rel(File::Spec->rel2abs($$self{'target'}),File::Spec->rel2abs($p));
-    print ($$self{'target'}." => ".$o."\n");
+    print ($$self{'target'}." => ".$o."\n") if ($::OPT{dbgtrans});
   }
   $$self{'dependencies'} = 
     join(" ", map { 
@@ -497,6 +515,7 @@ use File::Basename;
 
 $c=<<'MAKEFILE';
 {{call[($$self{'dos'} ? $self->convDos($m) : $self->convPosix($m))]
+{{makeinc}}
 # parts:
 {{parts}}
 llac}}
@@ -507,6 +526,7 @@ sub new {
     bless $self, $class;
     $$self{'fname'} = 'Makefile.{{os.make.ext}}.mk';
     $$self{'parts'} = [] if (!exists($$self{'parts'}));
+    $$self{'makeinc'} = [] if (!exists($$self{'makeinc'}));
     return $self;
 }
 
@@ -529,14 +549,28 @@ sub subTemplate {
 
 sub saveTo {
   my ($self) = shift;
-  my @o = ({'os.make.ext'=>'gmake','os'=>'cygwin'},
-	   {'os.make.ext'=>'nmake','os'=>'com'} );
+  my @o = grep { geneclipse::hasos( $$_{'os'}) } 
+    ({'os.make.ext'=>'gmake','os'=>'cygwin'},
+     {'os.make.ext'=>'nmake','os'=>'com'} );
   foreach my $os (@o) {
     my $n = $$os{'n'};
     my $o = $$os{'os'};
     my $def = $$osenv::os{$o};
-    #print(Dumper($def));
     $self->appendTail($def);
+    
+    # create include fine and include it
+    $g_ = $self->getValue('genflags');
+    if (ref($g_) eq ref []) {
+      my @l = @{$$self{'makeinc'}};
+      for my $g (@$g_) {
+	print("-------\n");
+      	my ($fn,$a,$g) = @{$g};
+	$fn = $self->doSub($fn);
+	$self->genFlagsFile($fn,$a,$g);
+	push(@{$$self{'makeinc'}},new textsnipppet({'_up'=>$self},"{{os.make.inc}} {{file${fn}elif}}\n"));
+      }
+      $self{'makeinc'} = [@l];
+    }
     $self->geneclipse::saveTo();
     if ($o eq 'cygwin') {
       my $of = $self->getFilename(@_);
@@ -544,12 +578,13 @@ my $p=<<"CMD";
 #!/bin/sh
 {{filebuild/nocyg.batelif}} {{{{PERLMAKE}}call}} $of
 CMD
-    my $c = new textsnipppet({'_up'=>$self,'pdir'=>$$self{'pdir'},'fname'=>(basename($of).".sh")},$p);
-    $c->saveTo();
-  }
+      my $c = new textsnipppet({'_up'=>$self,'pdir'=>$$self{'pdir'},'fname'=>(basename($of).".sh")},$p);
+      $c->saveTo();
+    }
     
-  $self->remove($def);
-}
+    
+    $self->remove($def);
+  }
   
 my $p=<<"CMD";
 include Makefile.gmake.mk
@@ -573,7 +608,9 @@ sub new {
 $gmake = new osenv(
    {'os.make.ext'=>'gmake',
     'os.make.inc'=>'include',
-    '$<' => '$<'}
+    '$<' => '$<',
+    '$^' => '$^'
+   }
 );
 $oswin_cygwin = new osenv(
    {'_up'=>$gmake, 
@@ -584,7 +621,8 @@ $oswin_cygwin = new osenv(
 $oswin_com    = new osenv(
    {'os.make.ext'=>'nmake',
     'os.make.inc'=>'!include',
-    '$<' => '$**' }
+    '$<' => '$**',
+    '$^' => '$**'}
 );
 $oslinux_com  = new osenv(
    {'_up'=>$gmake}
@@ -592,10 +630,12 @@ $oslinux_com  = new osenv(
 $osmac_com    = new osenv(
    {'_up'=>$gmake}
 );
-$os = { 'cygwin' => $oswin_cygwin,
-	'com'    => $oswin_com,
-	'linux'  => $oslinux_com,
-	'mac'    => $osmac_com };
+$os = { 
+       'cygwin' => $oswin_cygwin,
+       'com'    => $oswin_com,
+       'linux'  => $oslinux_com,
+       'mac'    => $osmac_com 
+      };
 
 package genenv;
 @ISA = ('template','geneclipse');
@@ -618,7 +658,7 @@ sub new {
     $$self{'PERL'} = "perl";
     $$self{'PERLLIB'} = exePerl("use Config; foreach \$l ('installprivlib', 'archlibexp') { if (-f \$Config{\$l}.'/ExtUtils/xsubpp') { print \$Config{\$l}; last; }}");
     $$self{'PERLMAKE'} = exePerl('use Config; print $Config{make};');
-    $$self{'COPY'} = ("$^O" eq 'MSWin32') ?  'copy /Y' : 'cp';
+    $$self{'COPY'} = ($::defos =~ /win/ ) ?  'copy /Y' : 'cp';
     foreach my $m ('PERLLIB','PERLMAKE') {
 	$$self{$m} =~ s/\n$//;
     } 
@@ -633,12 +673,6 @@ sub subTemplate {
   $self->template::subTemplate();
 }
 
-sub genFlagsFile {
-    my ($self,$fn,$a,$g) = @_;
-    my $g2 = $self->doSub($g);
-    $g2 = join("\n",map { template::trim($_) } split("\\n",$g2)) if ($$a{'trim'});
-    geneclipse::writefile($fn, $g2);
-}
 
 
 1;
