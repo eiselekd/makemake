@@ -1,26 +1,29 @@
 OPTIONS {
-  CFLAGS => ' -g '
+  CFLAGS => ' -g ',
+  makefilesnippet => "{{os.make.optinc}} Makefile.inc.mk\n" 
 } : []
 
-e.a { genflags=>[['{{[post=>"/"]pdir}}Makefile.e.flags.{{os.make.ext}}.mk', {'trim'=>1},
+e.a { genflags=>[['{{setfname(Makefile.e.flags.{{osmakeext}}mk)}}', {'trim'=>1},
                  "PERL_CCOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ccopts`
-	          PERL_LDOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ldopts`
+                  PERL_LDOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ldopts`
                  "]],
-      CINC=>['perl'] }
+      cinc=>['perl'] }
 : [
-     {{[post=>'/']pdir}}e.c : {
-       'cflags'=>['PERL_CCOPTS','CFLAGS'], 'ldflags'=>'PERL_LDOPTS',
+     e.c : {
+       'cflags'  => ['PERL_CCOPTS','CFLAGS'], 
+       'ldflags' =>'PERL_LDOPTS',
+       'cinc'    => ['perl'],
        'gen' => {
          'from' => 'perl/e.xs',
          'cmd'  => "{{PERL}} {{PERLLIB}}/ExtUtils/xsubpp -typemap {{PERLLIB}}/ExtUtils/typemap -typemap typemap {{file perl/e.xs elif}} -output \$@" } 
      }
-     
+          
 
 ]
 
 libe.a : [
-     parse.c 
-     tok.c 
+     src/tok.c 
+     src2/parse.c 
 ]
 
 libgtest.a : [

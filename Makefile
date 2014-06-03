@@ -1,2 +1,2 @@
 make:
-	perl ./geneclipse.pl t/build.def
+	perl ./makemake.pl t/build.def
