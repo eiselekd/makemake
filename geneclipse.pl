@@ -73,10 +73,6 @@ $OPT{'ar'} = "gnuar";
 	   'txt' => '{{ar}} cr {{get:obj.relfname}} {{["wrap"=>"^ "]get-set:srcs.relfname}} '
 	  })
 );
-   
-
-
-
 
 $o = getOrAddNode(\%g,\%n,'_opt')->merge(\%OPT);
 
