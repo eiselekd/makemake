@@ -72,7 +72,7 @@ $o = makemake::graph::getOrAddNode(\%g,\%n,'_opt')->merge(\%OPT);
 makemake::genConfig::perl_opts($o);
 makemake::genConfig::make_opts($o);
 
-print(Dumper($o));
+#print(Dumper($o));
 
 makemake::readdef(\%g,\%n,$def);
 makemake::genmakefile(\%g,\%n,$OPT{'makefile'},$OPT{'root'});

@@ -31,6 +31,10 @@ sub genmakefile {
 		my @e = grep { !makemake::graph::isLeaf($g,$n,$_,$::bset) } map { $$_[0] } makemake::graph::deepSearch($g, $n, $root->n, $::bset);
 		
 		makemake::graph::addVarEdge($g,$n,makemake::graph::getOrAddNode($g,$n,'_opt'),$mfile);
+
+		local $Data::Dumper::Maxdepth = 2;
+		#print(Dumper(makemake::graph::getOrAddNode($g,$n,'_opt')));
+		
 		makemake::graph::addVarEdge($g,$n,$mfile,$root);
 		
 		$$mfile{'parts'} = [map { $$n{$_} } @e];
@@ -132,7 +136,10 @@ sub readdef {
 		my $aproj = eval("{".makemake::utils::trim($2)."}");
 		my $b = makemake::utils::trim($3);
 		if ($f eq 'OPTIONS') {
-			makemake::graph::getOrAddNode($g,$n,'_opt')->merge($aproj);
+			local $Data::Dumper::Maxdepth = 1;
+			my $o = makemake::graph::getOrAddNode($g,$n,'_opt')->merge($aproj);
+			#print Dumper($o);
+			#exit(1);
 			next;
 		}
 		if (length($b) && (($f =~ /(.+\.a)$/) || ($f =~ /(.+\.exe)$/))) {
@@ -244,6 +251,7 @@ sub new {
 	bless $s,$c;
 	$s->merge($s_);
 	$$s{'txt'} =<<'TXTEND';
+{{get-set:makefilesnippet}}
 {{['wrap'=>'{{makeinclude}} ^']get-set-up:genflags.relfname}}
 # parts:
 {{parts}}
@@ -769,11 +777,20 @@ sub setNew        { my %i = map { $_ => 1 } @{$_[0]}; return new makemake::set(\
 
 package makemake::hashMerge;
 use Carp;
+use Data::Dumper;
 
 $RE_balanced_squarebrackets = qr'(?:[\[]((?:(?>[^\[\]]+)|(??{$RE_balanced_squarebrackets}))*)[\]])'s;
 
 sub get   { 
 	my ($s,$f) = (shift,shift);
+	local $Data::Dumper::Maxdepth = 1;	#print (" + get ".$_->n."\n");
+	
+	if (exists($$s{$f})) {
+		#print (Dumper($$s{$f}));
+		#print (" + get ".$f."\n");
+	}
+
+
 	if ($f =~ /^-$RE_balanced_squarebrackets>$/) {	}
 	return $s if ($f eq 'self');
 	return exists($$s{$f}) ? $$s{$f} : (UNIVERSAL::can($s,$f) ? $s->$f(@_) : (exists($$s{"_".$f}) ? $$s{"_".$f} : undef)); 
@@ -793,8 +810,14 @@ sub getValsUp {
 
 sub getVals {
 	my ($s,$n) = (shift,shift);
+	#print (" *get $n\n");
 	my @n = makemake::graph::deepSearchReverseE($$s{'_g'},$$s{'_n'},$s->n,makemake::set::setNew(['var']));
-	my @v = map { $_->get($n,@_) } grep { defined($_) } @n;
+	my @v = map { 
+		local $Data::Dumper::Maxdepth = 1;
+		#print (" + get ".$_->n."\n");
+		#print (Dumper($_));
+		
+		$_->get($n,@_) } grep { defined($_) } @n;
 	return grep { defined($_) } @v;
 }
 
@@ -826,7 +849,8 @@ sub _merge {
 				_merge($$a{$k}, $$b{$k});
 			} elsif (UNIVERSAL::isa($$b{$k},'ARRAY') && UNIVERSAL::isa($$a{$k},'ARRAY')) {
 				push (@{$$a{$k}},@{$$b{$k}});
-			} elsif (!UNIVERSAL::isa($$b{$k},'HASH') && !UNIVERSAL::isa($$a{$k},'HASH')) {
+			} elsif ((!UNIVERSAL::isa($$a{$k},'ARRAY')) &&
+					 (!UNIVERSAL::isa($$b{$k},'HASH')) && (!UNIVERSAL::isa($$a{$k},'HASH'))) {
 				$$a{$k} = $$b{$k};
 			} elsif (UNIVERSAL::isa($$a{$k},'ARRAY')) {
 				push (@{$$a{$k}},$$b{$k});
@@ -989,8 +1013,9 @@ sub snippet {
 		if ($$a{'gather'}) {
 			$v = [$s->getVals($m,@_)] ;
 		} else {
-			#print("Get '$m' on ".$s->n."\n");
 			$v = $s->getFirst($m,@_);
+			local $Data::Dumper::Maxdepth = 1;
+			#print("Get '$m' on ".$s->n."\n"); #:".Dumper($v)."\n");
 		}
 	}
     if ($$a{'wrap'}) {
@@ -1061,7 +1086,7 @@ use File::Temp qw/tempfile/;
    new makemake::tool_compile(\%g,\%n,'gnuc',
 	  {
 	   'cc' => 'gcc',
-	   'txt' => '{{cc}} {{["wrap"=>"-I^ "]get-set:srcs.cinc}} {{["wrap"=>"\$(^) "]get-set:srcs.cflags}}  {{["wrap"=>"^ "]get:srcs.relfname}} -o {{get:obj.relfname}} '
+	   'txt' => '{{cc}} -c {{["wrap"=>"-I^ "]get-set:srcs.cinc}} {{["wrap"=>"\$(^) "]get-set:srcs.cflags}}  {{["wrap"=>"^ "]get:srcs.relfname}} -o {{get:obj.relfname}} '
 	  }),
    'gnuld'=> 
    new makemake::tool_link(\%g,\%n,'gnuld',
