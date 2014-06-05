@@ -67,7 +67,13 @@ $OPT{'makefile'} = "Makefile.gen.mk" if (!exists($OPT{'makefile'}));
 # 2. handle same names in different projects
 # 3. handle generated filename-generation
 
+# 4. handle genflags in root
+
+# 5. group rules in Makefile under project
+# 6. vpath implement
+
 $o = makemake::graph::getOrAddNode(\%g,\%n,'_opt')->merge(\%OPT);
+$_phony = makemake::graph::getOrAddRule(\%g,\%n,'.PHONY');
 
 makemake::genConfig::perl_opts($o);
 makemake::genConfig::make_opts($o);

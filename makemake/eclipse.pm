@@ -106,10 +106,14 @@ $ctxt=<<'CEOF';
         <configuration artifactExtension="a" artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.staticLib" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.staticLib" cleanCommand="rm -rf" description="" id="cdt.managedbuild.config.gnu.cross.exe.debug.1121008806" name="Debug" parent="cdt.managedbuild.config.gnu.cross.exe.debug">
         fi}}
           <folderInfo id="cdt.managedbuild.config.gnu.cross.exe.debug.1121008806." name="/" resourcePath="">
-            <toolChain id="cdt.managedbuild.toolchain.gnu.cross.exe.debug.1146677503" name="Cross GCC" nonInternalBuilderId="cdt.managedbuild.builder.gnu.cross" superClass="cdt.managedbuild.toolchain.gnu.cross.exe.debug">
+            <toolChain id="cdt.managedbuild.toolchain.gnu.cross.exe.debug.1146677503" name="Cross GCC" {{if[$$s{'eclipseinternal'}] nonInternalBuilderId="cdt.managedbuild.builder.gnu.cross" fi}} superClass="cdt.managedbuild.toolchain.gnu.cross.exe.debug">
               <targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="cdt.managedbuild.targetPlatform.gnu.cross.1587627046" isAbstract="false" osList="all" superClass="cdt.managedbuild.targetPlatform.gnu.cross"/>
-              <builder autoBuildTarget="all" buildPath="${workspace_loc:/p1}/Debug" cleanBuildTarget="clean" id="org.eclipse.cdt.build.core.internal.builder.1935272256" incrementalBuildTarget="all" managedBuildOn="true" name="CDT Internal Builder" superClass="org.eclipse.cdt.build.core.internal.builder"/>
-
+              {{if[$$s{'eclipseinternal'}]
+              <builder autoBuildTarget="all" buildPath="${workspace_loc:/${ProjName}}/Debug" cleanBuildTarget="clean" id="org.eclipse.cdt.build.core.internal.builder.1935272256" incrementalBuildTarget="all" managedBuildOn="true" name="CDT Internal Builder" superClass="org.eclipse.cdt.build.core.internal.builder"/>
+              fi}}
+              {{if[!$$s{'eclipseinternal'}]
+              <builder id="cdt.managedbuild.builder.gnu.cross.188387381" managedBuildOn="false" name="Gnu Make Builder" superClass="cdt.managedbuild.builder.gnu.cross"/>
+              fi}}
               <tool id="cdt.managedbuild.tool.gnu.cross.c.compiler.24600764" name="Cross GCC Compiler" superClass="cdt.managedbuild.tool.gnu.cross.c.compiler">
                 <option defaultValue="gnu.c.optimization.level.none" id="gnu.c.compiler.option.optimization.level.1561788498" name="Optimization Level" superClass="gnu.c.compiler.option.optimization.level" useByScannerDiscovery="false" valueType="enumerated"/>
                 <option id="gnu.c.compiler.option.debugging.level.1777737136" name="Debug Level" superClass="gnu.c.compiler.option.debugging.level" useByScannerDiscovery="false" value="gnu.c.debugging.level.max" valueType="enumerated"/>

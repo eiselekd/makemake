@@ -53,8 +53,8 @@ sub genmakefile {
 			my @g = makemake::graph::allEdgesFrom($g,$n,$e,makemake::set::setNew(['gen']));
 			
 			my @r = ();
-			push(@r,makemake::tool::sel($g,$n,'compile',$$n{$e},@c)) if (scalar(@c));
-			push(@r,makemake::tool::sel($g,$n,'ar'     ,$$n{$e},@l)) if (scalar(@l));
+			push(@r,makemake::tool::sel($g,$n,'compile',      $$n{$e},@c)) if (scalar(@c));
+			push(@r,makemake::tool::sel($g,$n,$$n{$e}{'tool'},$$n{$e},@l)) if (scalar(@l));
 			foreach my $gen (@g) {
 				my $s = new makemake::tool($g,$n,{'txt'=>$$gen{'cmd'}});
 				my $a = $s->apply($g,$n,$$n{$e},$gen);
@@ -65,8 +65,9 @@ sub genmakefile {
 		}
 		
 		# 2: extract the "genflags" statments and generate makefiles
+		# todo_ move outof peoject loop, only generate once
 		my @a = ();
-		foreach my $e (map { $$_[0] } makemake::graph::deepSearch($g, $n, $root->n, $::bset)) {
+		foreach my $e (map { $$_[0] } (['_opt'], makemake::graph::deepSearch($g, $n, $root->n, $::bset))) {
 			my $a_ = $$n{$e}->get('genflags'); my @i = ();
 			if (defined($a_)) {
 				my $node = $$n{$e};
@@ -81,7 +82,6 @@ sub genmakefile {
 				$node->{'genflags'} = [@i];
 			}
 		}
-		
 	}
 	
     # 3: add 'all' target if not present
@@ -93,6 +93,7 @@ sub genmakefile {
 		}
 		unshift(@{$$mfile{'parts'}},$allnode);
 	}
+	unshift(@{$$mfile{'parts'}},makemake::graph::getOrAddRule($g,$n,'.PHONY'));
 
 	# 4: save makefile
 	$mfile->saveTo($mfile);
@@ -144,11 +145,16 @@ sub readdef {
 		}
 		if (length($b) && (($f =~ /(.+\.a)$/) || ($f =~ /(.+\.exe)$/))) {
 			
-			my $bf,$df;
+			my $bf,$df,$ld;
 			my $pn = $bf = makemake::utils::trim($1);
 			$pn = $::OPT{'builddir'}.$pn if (!($bf =~ /[\\\/]/));
 
+			my $tool = 'link';
+			$tool = 'ar' if ($bf =~ /^.*\.a$/);
+			
 			my $pnode = new makemake::makefile_rule($g,$n,$pn)->flags(['root'])->merge($aproj)->flags(['opts']);
+			$pnode->merge({'tool'=>$tool});
+			
 			my $id = $bf;
 			$id =~ s/\.((?:a)|(?:exe))$//; 
 			@{$pnode}{ qw/_id _ext/ } = ($id,$1);
@@ -156,14 +162,18 @@ sub readdef {
 			#my $_eo = addVarEdge($g,$n,getOrAddNode($g,$n,'_opt'),$pnode); #->trans(['var']);
 			#my $allnode = getOrAddRule($g,$n,'all')->flags(['root']);
 			
-			my $rnode = $allnode;
+			my $rnode = $allnode; my $isalias = undef;
 			if ($pn ne $bf) {
 				my $_n = new makemake::makefile_rule($g,$n,$bf)->flags(['alias','phony']);
-				my $_e = makemake::graph::addEdge($g,$n,$rnode,$_n)->trans(['alias','var']);
-				$rnode = $_n;
+				my $_e = makemake::graph::addEdge($g,$n,$rnode,$_n)->trans(['var','alias']);
+				$rnode = $_n; $isalias = 'alias';
+				
+				my $phony = makemake::graph::getOrAddRule($g,$n,'.PHONY');
+				my $_ep = makemake::graph::addEdge($g,$n,$phony,$_n)->trans(['alias']);
+				
+
 			}
-			
-			my $e0 = makemake::graph::addEdge($g,$n,$rnode,$pnode)->trans(['build','var']);
+			my $e0 = makemake::graph::addEdge($g,$n,$rnode,$pnode)->trans(['build','var',$isalias]);
 			
 			$b =~ s/\\\n//g;
 			my @b = split("[\\n]+",$b);
@@ -215,7 +225,7 @@ sub readdef {
 					$cc = 'gcc';
 					$cc = 'g++' if ($b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/);
 					
-					#print("$b:$o\n");
+					#print("$b:$o -> $cc\n");
 					my $onode = new makemake::makefile_rule($g,$n,$o);
 					my $cnode = new makemake::makefile_rule($g,$n,$b)->flags(['enode']);
 					my $_eo = new makemake::makefile_action($g,$n,$pnode,$onode)->trans(['link','var']);
@@ -255,6 +265,7 @@ sub new {
 {{['wrap'=>'{{makeinclude}} ^']get-set-up:genflags.relfname}}
 # parts:
 {{parts}}
+
 TXTEND
 	confess("Multiple nodes with same name\n") if (exists($$n{$name}));
 	$$n{$name} = $s;
@@ -298,8 +309,8 @@ sub deps {
 	my ($s) = @_;
 	my ($g,$n) = ($$s{'_g'},$$s{'_n'});
 	my @e = makemake::graph::allEdgesFrom($g,$n,$s->n,$::bset);
-	my %k = map { $$_{'_to'}->n => 1 } @e;
-	return [map { $$n{$_} } keys %k];
+	my @n = makemake::graph::toNodes($g,$n,@e);
+	return [@n];
 }
 
 sub rules {
@@ -346,6 +357,16 @@ my $idx = 0;
 sub new {
 	my ($c,$g,$n,$tool,$obj,@srcs) = @_;
 	my $name = "_tool_action_$idx";	$idx++;
+	
+	@srcs = map { 
+	 	my @node = ($_); 
+	 	if ($_->flagsHas(['alias'])) {
+	 		my @g = (makemake::graph::allEdgesFrom($g,$n,$_->n,makemake::set::setNew(['alias'])));
+	 		@node = makemake::graph::toNodes($g,$n,@g);
+	 	}; 
+	 	@node;
+	} @srcs;
+	
 	my $s = {'_g'=>$g,'_n'=>$n,	'_name'=>$name, 'obj'=>$obj,'srcs'=>[@srcs]};
 	bless $s,$c;
 	$$s{'txt'} = "action";
@@ -379,8 +400,8 @@ sub sel {
 sub apply {
 	my ($s,$g,$n,$obj,@srcs) = @_;
 	my $a = new makemake::tool_action($g,$n,$s,$obj,makemake::graph::toNodes($g,$n,@srcs));
-	makemake::graph::addVarEdge($g,$n,$s,$a);
 	makemake::graph::addVarEdge($g,$n,$obj,$a);
+	makemake::graph::addVarEdge($g,$n,$s,$a); # comes after $obj
 	my @k = (qw/ txt /);
 	@{$a}{@k} = @{$s}{@k};
 	my $c = $s->n.".".$a->n;
@@ -487,7 +508,7 @@ sub deepSearchReverse_f {
 		if (!exists($h{$to})) {
 			last if (&$f($g,$n,$a,$to,$deep));
 			$h{$to}=1;
-			foreach my $from (filter_set($$g{'_o'}{'_from_order'},grep { exists($$g{'_g'}{$_}{$to}) } keys %{$g})) {
+			foreach my $from (filter_set($$g{'_o'}{$to}{'_r_from_order'}, grep { exists($$g{'_g'}{$_}{$to}) } keys %{$g})) {
 				foreach my $e (@{$$g{'_g'}{$from}{$to}}) {
 					if (!defined($set) || !makemake::set::setInterEmpty($$e{'_trans'},$set)) {
 						push(@p, [$from, $deep+1] );
@@ -512,7 +533,7 @@ sub deepSearchReverse_e {
 	$h{$root}=1;
 	while(scalar(@p)) {
 		my ($to,$deep) = @{shift(@p)};
-		foreach my $from (filter_set($$g{'_o'}{'_from_order'},grep { exists($$g{'_g'}{$_}{$to}) } keys %{$g})) {
+		foreach my $from (filter_set($$g{'_o'}{$to}{'_r_from_order'}, grep { exists($$g{'_g'}{$_}{$to}) } keys %{$g})) {
 			foreach my $e (@{$$g{'_g'}{$from}{$to}}) {
 				if (!defined($set) || !makemake::set::setInterEmpty($$e{'_trans'},$set)) {
 					if (!exists($h{$from})) {
@@ -599,7 +620,7 @@ sub allEdgesFrom {
 
 sub allEdgesTo {
 	my ($g,$n,$to,$set) = @_; my @r = ();
-	foreach my $from (filter_set($$g{'_o'}{'_from_order'},map { exists($$g{'_g'}{$_}{$to}) } keys %$g)) {
+	foreach my $from (map { exists($$g{'_g'}{$_}{$to}) } filter_set($$g{'_o'}{'_from_order'}, keys %$g)) {
 		foreach my $e (@{$$g{'_g'}{$from}{$to}}) {
 			if (!defined($set) || !makemake::set::setInterEmpty($$e{'_trans'},$set)) {
 				push(@r, $e);
@@ -609,8 +630,8 @@ sub allEdgesTo {
 	return @r;
 }
 
-sub toNodes     { my ($g,$n,@e) = @_; return map { confess("Cannot find to-node") if (!exists($$n{$$_{'_to'}->n})); $$n{$$_{'_to'}->n} } @e; }
-sub fromNodes   { my ($g,$n,@e) = @_; return map { confess("Cannot find from-node") if (!exists($$n{$$_{'_to'}->n})); $$n{$$_{'_from'}->n} } @e; }
+sub toNodes     { my ($g,$n,@e) = @_; return map { confess("Cannot find to-node: ".$$_{'_to'}->n) if (!exists($$n{$$_{'_to'}->n})); $$n{$$_{'_to'}->n} } @e; }
+sub fromNodes   { my ($g,$n,@e) = @_; return map { confess("Cannot find from-node: ". $$_{'_from'}->n) if (!exists($$n{$$_{'_from'}->n})); $$n{$$_{'_from'}->n} } @e; }
 sub isLeaf      { my ($g,$n,$root,$set) = @_; my @r = allEdgesFrom($g,$n,$root,$set); return (scalar(@r) == 0);  }
 sub printIndent { my ($indent) = @_; my $r = ""; for (my $i = 0; $i < $indent; $i++) { $r .= ("  ");} return $r; }
 sub printColor  { my ($o) = @_; if (exists($$o{'_color'})) { return ($$o{'_color'}); } else { return ("---"); }; }
@@ -644,11 +665,18 @@ sub putEdge {
 	my ($g,$n,$e) = @_; 
 	confess("Cannot name edge nodes \n") if (!UNIVERSAL::can($$e{'_from'},'n') || !UNIVERSAL::can($$e{'_to'},'n'));
 	my $from_n = $$e{'_from'}->n;  my $to_n = $$e{'_to'}->n;
+
 	$$g{'_o'}{'_from_order'} = [] if (!exists($$g{'_o'}{_from_order}));
 	$$g{'_o'}{$from_n}{'_to_order'} = [] if (!exists($$g{'_o'}{$from_n}{'_to_order'}));
+	push_set($$g{'_o'}{'_from_order'},$from_n) if (!makemake::set::arcontains($$g{'_o'}{'_from_order'},$from_n));
+	push_set($$g{'_o'}{$from_n}{'_to_order'},$to_n) if (!makemake::set::arcontains($$g{'_o'}{$from_n}{'_to_order'},$to_n));
+	
+	$$g{'_o'}{'_r_to_order'} = [] if (!exists($$g{'_o'}{'_r_to_order'}));
+	$$g{'_o'}{$to_n}{'_r_from_order'} = [] if (!exists($$g{'_o'}{$to_n}{'_r_from_order'}));
+	push_set($$g{'_o'}{'_r_to_order'},$to_n) if (!makemake::set::arcontains($$g{'_o'}{'_r_to_order'},$to_n));
+	push_set($$g{'_o'}{$to_n}{'_r_from_order'},$from_n) if (!makemake::set::arcontains($$g{'_o'}{$to_n}{'_r_from_order'},$from_n));
+	
 	$$g{'_g'}{$from_n}{$to_n} = [] if (!exists($$g{$from_n}{$to_n}));
-	push_set($$g{'_o'}{'_from_order'},$from_n);
-	push_set($$g{'_o'}{$from_n}{'_to_order'},$to_n);
 	push(@{$$g{'_g'}{$from_n}{$to_n}},$e);
 	return $e;
 }
@@ -661,8 +689,8 @@ sub push_set {
 
 sub filter_set {
 	my ($a, @n) = @_; 
-	my %h = map { $_ => 1 } @$a;
-	return grep { $h{$_} } @n;
+	my %h = map { $_ => 1 } @n;
+	return grep { $h{$_} } @$a;
 }
 
 sub addEdge {
@@ -771,7 +799,8 @@ package makemake::set;
 sub new           { bless $_[1],$_[0]; return $_[1]; } 
 sub setInter      { my ($a,$b) = @_; my %i = map { $_ => 1 } grep { exists($$b{$_}) && $$b{$_} } keys %$a; return new makemake::set(\%i); }
 sub setInterEmpty { my $i = setInter(@_); return scalar(keys %$i) == 0; }
-sub setNew        { my %i = map { $_ => 1 } @{$_[0]}; return new makemake::set(\%i); }
+sub setNew        { my %i = map { $_ => 1 } grep { defined($_) } @{$_[0]}; return new makemake::set(\%i); }
+sub arcontains    { my ($a,$n) = @_; my @a = grep { $_ eq $n } @$a;  return scalar(@a)>0; }
 
 ######################################################################
 
@@ -1091,8 +1120,8 @@ use File::Temp qw/tempfile/;
    'gnuld'=> 
    new makemake::tool_link(\%g,\%n,'gnuld',
 	  {
-	   'ld' => 'ld',
-	   'txt' => '{{ld}} {{["wrap"=>"^ "]get-set:srcs.relfname}} -o {{get:obj.relfname}} '
+	   'ld' => 'g++',
+	   'txt' => '{{ld}} {{["wrap"=>"^ "]get:srcs.relfname}} {{["wrap"=>"\$(^) "]get-set:srcs.ldflags}} -o {{get:obj.relfname}} '
 	  }),
    'gnuar'=> 
    new makemake::tool_link(\%g,\%n,'gnuar',
