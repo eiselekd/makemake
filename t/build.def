@@ -1,40 +1,46 @@
 OPTIONS {
   CFLAGS => ' -g ',
-  makefilesnippet => "{{os.make.optinc}} Makefile.inc.mk\n" 
+  makefilesnippet => "{{makeinclude}} Makefile.inc.mk\n" 
+      
+
 } : []
 
-e.a { genflags=>[['{{setfname(Makefile.e.flags.{{osmakeext}}mk)}}', {'trim'=>1},
-                 "PERL_CCOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ccopts`
-                  PERL_LDOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ldopts`
-                 "]],
-      cinc=>['perl'] }
+e.a { 
+  cinc=>['perl'] , 
+  genflags=>[
+    ['{{setfname(Makefile.e.flags.{{osmakeext}}mk)}}', {'trim'=>1},
+  "  
+      PERL_CCOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ccopts`
+      PERL_LDOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ldopts`
+  "]]}
 : [
-     e.c : {
-       'cflags'  => ['PERL_CCOPTS','CFLAGS'], 
-       'ldflags' =>'PERL_LDOPTS',
-       'cinc'    => ['perl'],
-       'gen' => {
-         'from' => 'perl/e.xs',
-         'cmd'  => "{{PERL}} {{PERLLIB}}/ExtUtils/xsubpp -typemap {{PERLLIB}}/ExtUtils/typemap -typemap typemap {{file perl/e.xs elif}} -output \$@" } 
-     }
-          
-
+  e.c : {
+    'cflags'  => ['PERL_CCOPTS','CFLAGS'], 
+    'ldflags' =>'PERL_LDOPTS',
+    'cinc'    => ['perl'],
+    'gen' => {
+      'from' => 'perl/e.xs',
+      'cmd'  => "{{PERL}} {{PERLLIB}}/ExtUtils/xsubpp -typemap {{PERLLIB}}/ExtUtils/typemap -typemap typemap {{file perl/e.xs elif}} -output \$@" }
+  }
 ]
 
 libe.a : [
-     src/tok.c 
-     src2/parse.c 
+  tok.c 
+  parse.c 
 ]
 
-libgtest.a : [
-     perl/tmp-gtest/gtest-1.7.0/src/gtest-all.cc
+libgtest.a { cinc => ['perl/tmp-gtest/gtest-1.7.0/include/','perl/tmp-gtest/gtest-1.7.0/'] }  : [
+  perl/tmp-gtest/gtest-1.7.0/src/gtest-all.cc
 ]
 
 
-
-test1.exe : [
+test1.exe { 'cinc' => ['perl/tmp-gtest/gtest-1.7.0/include/','perl/tmp-gtest/gtest-1.7.0/'],
+	    'cflags'  => ['PERL_CCOPTS','CFLAGS'],
+	    'ldflags'  => ['PERL_LDOPTS']
+	   } : [
      e.a 
      libgtest.a 
      libe.a
      perl/t/test1.cpp 
+     perl/tmp-gtest/gtest-1.7.0/src/gtest_main.cc
 ]
