@@ -4,6 +4,11 @@ use Data::Dumper;
 use File::Basename;
 use File::Path;
 
+sub addToPhony {my ($g,$n,$r) = @_; my $e = makemake::graph::addEdge($g,$n,$::_phony,$r)->trans(['dep']); return $r;}
+sub addToClean {my ($g,$n,$r) = @_; my $e = makemake::graph::addEdge($g,$n,$::_clean,$r)->trans(['dep']); return $r;}
+sub addOptEdge {my ($g,$n,$r) = @_; my $e = makemake::graph::addVarEdge($g,$n,$::_opt,$r); return $r;}
+sub convSlash  {my ($_fn) = @_; $_fn =~ s/[\\]/\//g; return $_fn; }
+
 # types of edges:
 #  var     : templave variable inheritance
 #  build   : build-dependency 
@@ -53,6 +58,7 @@ sub genmakefile {
 			my @g = makemake::graph::allEdgesFrom($g,$n,$e,makemake::set::setNew(['gen']));
 			
 			my @r = ();
+			# todo: instead of creating tool_action from make_action, create tool_action in readdef()
 			push(@r,makemake::tool::sel($g,$n,'compile',      $$n{$e},@c)) if (scalar(@c));
 			push(@r,makemake::tool::sel($g,$n,$$n{$e}{'tool'},$$n{$e},@l)) if (scalar(@l));
 			foreach my $gen (@g) {
@@ -93,7 +99,8 @@ sub genmakefile {
 		}
 		unshift(@{$$mfile{'parts'}},$allnode);
 	}
-	unshift(@{$$mfile{'parts'}},makemake::graph::getOrAddRule($g,$n,'.PHONY'));
+	push(@{$$mfile{'parts'}},$::_phony);
+	push(@{$$mfile{'parts'}},$::_clean);
 
 	# 4: save makefile
 	$mfile->saveTo($mfile);
@@ -168,12 +175,11 @@ sub readdef {
 				my $_e = makemake::graph::addEdge($g,$n,$rnode,$_n)->trans(['var','alias']);
 				$rnode = $_n; $isalias = 'alias';
 				
-				my $phony = makemake::graph::getOrAddRule($g,$n,'.PHONY');
-				my $_ep = makemake::graph::addEdge($g,$n,$phony,$_n)->trans(['alias']);
-				
+				addToPhony($g,$n,$_n);
 
 			}
 			my $e0 = makemake::graph::addEdge($g,$n,$rnode,$pnode)->trans(['build','var',$isalias]);
+			addToClean($g,$n,$pnode);
 			
 			$b =~ s/\\\n//g;
 			my @b = split("[\\n]+",$b);
@@ -226,12 +232,16 @@ sub readdef {
 					$cc = 'g++' if ($b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/);
 					
 					#print("$b:$o -> $cc\n");
+					
 					my $onode = new makemake::makefile_rule($g,$n,$o);
 					my $cnode = new makemake::makefile_rule($g,$n,$b)->flags(['enode']);
 					my $_eo = new makemake::makefile_action($g,$n,$pnode,$onode)->trans(['link','var']);
 					my $_ec = new makemake::makefile_action($g,$n,$onode,$cnode)->trans(['compile','var'])->merge($a);
 					$onode->merge({'cc'=>$cc});
 					$bnode = $cnode;
+
+					addToClean($g,$n,$onode);
+					
 				} elsif ($b =~ /^(.*)\.a$/) {
 					my $anode = makemake::graph::getOrAddRule($g,$n,$b);
 					my $_ea = new makemake::makefile_action($g,$n,$pnode,$anode)->trans(['linklib','var'])->merge($a);
@@ -266,6 +276,7 @@ sub new {
 # parts:
 {{parts}}
 
+{{get-set:makefilesnippetpost}}
 TXTEND
 	confess("Multiple nodes with same name\n") if (exists($$n{$name}));
 	$$n{$name} = $s;
@@ -310,6 +321,7 @@ sub deps {
 	my ($g,$n) = ($$s{'_g'},$$s{'_n'});
 	my @e = makemake::graph::allEdgesFrom($g,$n,$s->n,$::bset);
 	my @n = makemake::graph::toNodes($g,$n,@e);
+	@n = map { makemake::graph::followEdgeOrNode($g,$n,$_,$::aset); } @n;
 	return [@n];
 }
 
@@ -519,6 +531,7 @@ sub deepSearchReverse_f {
 	}
 }
 
+
 sub deepSearchReverse {
     my ($g,$n,$root,$set) = @_; my @r = ();
     deepSearchReverse_f($g,$n,$root, 
@@ -558,6 +571,18 @@ sub deepSearchReverseE {
 	@r = ($$n{$root}, (map { ($_,$$_{'_from'}) } (@r))); #, $$n{$root});
     return @r;
 }
+
+sub followEdgeOrNode {
+	my ($g,$n,$node,$s) = @_; 
+	my @r = allEdgesFrom($g,$n,$node->n,$s);
+	if (scalar(@r)) {
+		@r = toNodes($g,$n,@r);
+	} else {
+		@r = ($node);
+	}
+	return @r;
+}
+
 
 sub shortestPath {
     my ($g,$n,$from,$to,$p,$dir,$set) = @_; 
@@ -630,9 +655,10 @@ sub allEdgesTo {
 	return @r;
 }
 
-sub toNodes     { my ($g,$n,@e) = @_; return map { confess("Cannot find to-node: ".$$_{'_to'}->n) if (!exists($$n{$$_{'_to'}->n})); $$n{$$_{'_to'}->n} } @e; }
-sub fromNodes   { my ($g,$n,@e) = @_; return map { confess("Cannot find from-node: ". $$_{'_from'}->n) if (!exists($$n{$$_{'_from'}->n})); $$n{$$_{'_from'}->n} } @e; }
-sub isLeaf      { my ($g,$n,$root,$set) = @_; my @r = allEdgesFrom($g,$n,$root,$set); return (scalar(@r) == 0);  }
+sub assert_g_n  { my ($g,$n) = @_; confess("Expect graph and noded\n") if (!(ref($g) =~ /edges/ && ref($n) =~ /nodes/));  }
+sub toNodes     { assert_g_n(@_);my ($g,$n,@e) = @_; return map { confess("Cannot find to-node: ".$$_{'_to'}->n) if (!exists($$n{$$_{'_to'}->n})); $$n{$$_{'_to'}->n} } @e; }
+sub fromNodes   { assert_g_n(@_);my ($g,$n,@e) = @_; return map { confess("Cannot find from-node: ". $$_{'_from'}->n) if (!exists($$n{$$_{'_from'}->n})); $$n{$$_{'_from'}->n} } @e; }
+sub isLeaf      { assert_g_n(@_);my ($g,$n,$root,$set) = @_; my @r = allEdgesFrom($g,$n,$root,$set); return (scalar(@r) == 0);  }
 sub printIndent { my ($indent) = @_; my $r = ""; for (my $i = 0; $i < $indent; $i++) { $r .= ("  ");} return $r; }
 sub printColor  { my ($o) = @_; if (exists($$o{'_color'})) { return ($$o{'_color'}); } else { return ("---"); }; }
 sub deepPrint   {
@@ -752,7 +778,7 @@ sub relfname {
 	my $dbasen = dirname($basen);
 	my $_fn = File::Spec->abs2rel(File::Spec->rel2abs($fn),File::Spec->rel2abs($dbasen));
 	$_fn = $fn if ($s->flagsHas(['alias']));
-	return $_fn;
+	return makemake::convSlash($_fn);
 }
 
 # relify to eclipse .project
@@ -801,6 +827,9 @@ sub setInter      { my ($a,$b) = @_; my %i = map { $_ => 1 } grep { exists($$b{$
 sub setInterEmpty { my $i = setInter(@_); return scalar(keys %$i) == 0; }
 sub setNew        { my %i = map { $_ => 1 } grep { defined($_) } @{$_[0]}; return new makemake::set(\%i); }
 sub arcontains    { my ($a,$n) = @_; my @a = grep { $_ eq $n } @$a;  return scalar(@a)>0; }
+
+package makemake::edges; sub new { my ($c,$s) = @_; bless($s,$c); return $s; }
+package makemake::nodes; sub new { my ($c,$s) = @_; bless($s,$c); return $s; }
 
 ######################################################################
 
@@ -889,6 +918,7 @@ sub _merge {
 		}
 	}
 }
+sub convSlash { my ($s,$_fn) = @_; $_fn =~ s/[\\]/\//gs; return $_fn; }
 
 ######################################################################
 
@@ -951,17 +981,17 @@ sub filesnippet {
     my ($self,$m) = (shift,shift);
     $m = makemake::utils::trim($m);
     my $p = $self->getFirst('pdir',@_);
-    #if (!$self->isAlias($m)) {
+    #if (!$self->isAlias($m)) {k
 	$m = File::Spec->abs2rel(File::Spec->rel2abs($m),File::Spec->rel2abs($p));
     #}
-    return $m;
+	return makemake::convSlash($m);
 }
 
 sub callsnippet {
     my ($self,$m) = (shift,shift);
 	my ($m,$n) = snippetParam($m);
 	confess("Cannot find call expression\n") if (!length($n));
-    $a = $self->doSub($m,@_);
+    my $a = $self->doSub($m,@_);
 	$m = eval($n); warn $@ if $@;
     return $m;
 }
@@ -1015,9 +1045,10 @@ sub snippet {
 	
 	#print("$n\n".Dumper($a));
 	my $v;
-	if ($m =~ /^\s*([a-zA-Z0-9_\.:]+)$RE_balanced_smothbrackets/) {
+	if ($m =~ /^\s*([a-zA-Z0-9_\.:]+)$RE_balanced_smothbrackets/s) {
 		my ($x,$sel) = ($1,$2);
-		$v = UNIVERSAL::can($s,$x) ? $s->$x($sel,@_) : $x;
+		$v = UNIVERSAL::can($s,$x) ? $s->$x($s->doSub($sel,@_),@_) : 
+			(exists(&$x) ? &$x($s->doSub($sel,@_),@_) : $x);
 	} elsif ($m =~ /^\s*(get(?:-set)?(?:-up)?):([a-zA-Z0-9_\.]+)/) {
 		my ($x,$sel) = ($1,$2); my @v = ($s);
 		my $isup = ($x =~ /-up/);
@@ -1127,7 +1158,7 @@ use File::Temp qw/tempfile/;
    new makemake::tool_link(\%g,\%n,'gnuar',
 	  {
 	   'ar' => 'ar',
-	   'txt' => '{{ar}} cr {{get:obj.relfname}} {{["wrap"=>"^ "]get:srcs.relfname}} '
+	   'txt' => '{{ar}} cr {{get:obj.relfname}} {{["wrap"=>"^ "]get:srcs.relfname}}; ranlib {{get:obj.relfname}} '
 	  })
 );
 
@@ -1143,7 +1174,7 @@ sub exePerl {
 sub perl_opts  {
     my ($self) = @_;
     $$self{'PERL'} = "perl";
-    $$self{'PERLLIB'} = exePerl("use Config; foreach \$l ('installprivlib', 'archlibexp') { if (-f \$Config{\$l}.'/ExtUtils/xsubpp') { print \$Config{\$l}; last; }}");
+    $$self{'PERLLIB'} = makemake::convSlash(exePerl("use Config; foreach \$l ('installprivlib', 'archlibexp') { if (-f \$Config{\$l}.'/ExtUtils/xsubpp') { print \$Config{\$l}; last; }}"));
     $$self{'PERLMAKE'} = exePerl('use Config; print $Config{make};');
     $$self{'COPY'} = ($::defos =~ /win/ ) ?  'copy /Y' : 'cp';
     foreach my $m ('PERLLIB','PERLMAKE') {
@@ -1155,6 +1186,7 @@ sub perl_opts  {
 sub make_opts  {
     my ($self) = @_;
     $$self{'makeinclude'} = "include";
+    $$self{'$^'} = "\$^";
 	$$self{'osmakeext'} = 'gmake.';
 }
 
