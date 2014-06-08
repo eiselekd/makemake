@@ -12,6 +12,7 @@ require "$Bin/makemake.pm";
 require "$Bin/makemake/eclipse.pm";
 $bset = makemake::set::setNew(['build','alias','link','compile','linklib','gen','dep']);
 $eset = makemake::set::setNew(['build','alias','link','compile','gen','dep']);
+$aset = makemake::set::setNew(['alias']);
 $vset = makemake::set::setNew(['var']);
 
 $OPT{'args'} = join(" ",($0,@ARGV));
@@ -51,6 +52,9 @@ $def = $ARGV[0];
 
 %g = ();
 %n = ();
+$g = new makemake::edges(\%g);
+$n = new makemake::nodes(\%n);
+
 
 $OPT{'root'} = ['all'] if(!defined($OPT{'root'}));
 $OPT{'root'} = [split(/,/,join(',',@{$OPT{'root'}}))];
@@ -72,16 +76,20 @@ $OPT{'makefile'} = "Makefile.gen.mk" if (!exists($OPT{'makefile'}));
 # 5. group rules in Makefile under project
 # 6. vpath implement
 
-$o = makemake::graph::getOrAddNode(\%g,\%n,'_opt')->merge(\%OPT);
-$_phony = makemake::graph::getOrAddRule(\%g,\%n,'.PHONY');
+$_phony = makemake::graph::getOrAddRule($g,$n,'.PHONY')->flags(['alias'])->merge({'noresolvealias'=>1});
+$_clean = makemake::graph::getOrAddRule($g,$n, 'clean')->flags(['alias']);;
+$_opt = $o = makemake::graph::getOrAddNode($g,$n,'_opt')->merge(\%OPT);
+makemake::addOptEdge($g,$n,$_clean);
+$$_clean{'rules'} = "rm -rf {{\$^}}";
+makemake::addToPhony($g,$n,$_clean);
 
 makemake::genConfig::perl_opts($o);
 makemake::genConfig::make_opts($o);
 
 #print(Dumper($o));
 
-makemake::readdef(\%g,\%n,$def);
-makemake::genmakefile(\%g,\%n,$OPT{'makefile'},$OPT{'root'});
+makemake::readdef($g,$n,$def);
+makemake::genmakefile($g,$n,$OPT{'makefile'},$OPT{'root'},{});
 
 # Local Variables:
 # tab-width: 4

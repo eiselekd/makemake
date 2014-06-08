@@ -7,7 +7,7 @@ package makemake::eclipse_project;
 $ptxt=<<'PEOF';
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-  <name>test{{id}}</name>
+  <name>{{id}}</name>
   <comment></comment>
   <projects>
   </projects>
@@ -45,11 +45,12 @@ sub new {
     my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'txt'=>$ptxt};
     bless $s,$c;
     $s->merge($s_) if (defined($s_));;
+	$$s{'linkedResources'} = [ grep { defined($_) } @{$$s{'linkedResources'}} ];
     makemake::graph::putNode($g,$n,$s);
     return $s;
 }
 
-package makemake::eclipse_project::vfolder;
+package makemake::eclipse_project::folder;
 @ISA = ('makemake::template','makemake::node');
 use File::Basename;
 use File::Path;
@@ -58,14 +59,14 @@ $eres=<<'FEOF';
 <link>
 	<name>{{dir}}</name>
 	<type>2</type>
-	<locationURI>virtual:/virtual</locationURI>
+	<locationURI>{{get:self.releprojectfname}}</locationURI>
 </link>
 FEOF
 
 sub new {
     my ($c,$g,$n,$s_) = @_;
     my $name = "_eclipse_project_resource$idx"; $idx++;
-    my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'etxt'=>$eres};
+    my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'etxt'=>$eres,'_fname'=>'virtual:/virtual', 'pdir'=>'virtual:/virtual'};
     bless $s,$c;
     $s->merge($s_) if (defined($s_));;
     makemake::graph::putNode($g,$n,$s);
@@ -106,7 +107,7 @@ $ctxt=<<'CEOF';
         <configuration artifactExtension="a" artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.staticLib" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.staticLib" cleanCommand="rm -rf" description="" id="cdt.managedbuild.config.gnu.cross.exe.debug.1121008806" name="Debug" parent="cdt.managedbuild.config.gnu.cross.exe.debug">
         fi}}
           <folderInfo id="cdt.managedbuild.config.gnu.cross.exe.debug.1121008806." name="/" resourcePath="">
-            <toolChain id="cdt.managedbuild.toolchain.gnu.cross.exe.debug.1146677503" name="Cross GCC" {{if[$$s{'eclipseinternal'}] nonInternalBuilderId="cdt.managedbuild.builder.gnu.cross" fi}} superClass="cdt.managedbuild.toolchain.gnu.cross.exe.debug">
+            <toolChain id="cdt.managedbuild.toolchain.gnu.cross.exe.debug.1146677503" name="Cross GCC" {{if[!$$s{'eclipseinternal'}] nonInternalBuilderId="cdt.managedbuild.builder.gnu.cross" fi}} superClass="cdt.managedbuild.toolchain.gnu.cross.exe.debug">
               <targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="cdt.managedbuild.targetPlatform.gnu.cross.1587627046" isAbstract="false" osList="all" superClass="cdt.managedbuild.targetPlatform.gnu.cross"/>
               {{if[$$s{'eclipseinternal'}]
               <builder autoBuildTarget="all" buildPath="${workspace_loc:/${ProjName}}/Debug" cleanBuildTarget="clean" id="org.eclipse.cdt.build.core.internal.builder.1935272256" incrementalBuildTarget="all" managedBuildOn="true" name="CDT Internal Builder" superClass="org.eclipse.cdt.build.core.internal.builder"/>
@@ -170,6 +171,9 @@ sub new {
     my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'txt'=>$ctxt};
     bless $s,$c;
     $s->merge($s_) if (defined($s_));;
+
+	#$$s{'eclipseinternal'} = 1;
+	
     makemake::graph::putNode($g,$n,$s);
     return $s;
 }
