@@ -3,6 +3,7 @@ package makemake;
 use Data::Dumper;
 use File::Basename;
 use File::Path;
+use Carp;
 
 sub addToPhony {my ($g,$n,$r) = @_; my $e = makemake::graph::addEdge($g,$n,$::_phony,$r)->trans(['dep']); return $r;}
 sub addToClean {my ($g,$n,$r) = @_; my $e = makemake::graph::addEdge($g,$n,$::_clean,$r)->trans(['dep']); return $r;}
@@ -82,6 +83,10 @@ sub genmakefile {
 	foreach my $e (map { $$_[0] } (['_opt'], map { makemake::graph::deepSearch($g, $n, $_->n, $::bset) } @roota )) {
 		my $node = makemake::graph::getNode($g,$n,$e);
 		my $a_ = $node->get('genflags'); my @i = ();
+		#print("Check ".$node->n." $a_ \n----------------------\n");
+		#local $Data::Dumper::Maxdepth = 1;
+		#print Dumper($node);
+		
 		if (defined($a_)) {
 			foreach my $a (@$a_) {
 				my ($fn,$args,$gen) = @$a;
@@ -92,7 +97,7 @@ sub genmakefile {
 				my $m = $i->saveTo($mfile);
 			}
 			$node->{'genflagsn'} = [@i]; # included makefile
-			print("Genflags: ".scalar(@i)." files in ".$node->n."\n");
+			print("Genflags: ".scalar(@i)." files in ".$node->n."\n") if ($::OPT{verbose});
 		}
 	}
 
@@ -127,13 +132,13 @@ sub genmakefile {
 	#push(@{$$mfile{'parts'}},$::_clean);
 
 	# 4: save makefile
-	print("=> Saving Makefile for [".join(",",map { $_->n } @roota)."]: ".$mfile->{'_fname'}."\n");
+	print("=> Saving Makefile for [".join(",",map { $_->n } @roota)."]: ".$mfile->{'_fname'}."\n") if ($::OPT{verbose});
 	$mfile->saveTo($mfile);
 	print("Graph of [".join(",",@$roota)."] Makefile '$mfn':\n") if ($::OPT{dbggraph} || $::OPT{verbose});
 	makemake::graph::deepPrint($g,$n,[@$roota],$::bset,$mfile) if ($::OPT{dbggraph}  || $::OPT{verbose});
 
 	my $pdir = defined($::OPT{'pdir'}) ? $::OPT{'pdir'} : dirname($mfn);
-	print("PDir: ".$::OPT{'pdir'}."($pdir)\n");
+	print("PDir: ".$::OPT{'pdir'}."($pdir)\n") if ($::OPT{verbose});
 	
 	my  $bdir = $::OPT{'builddir'};
 	my $_bdir = File::Spec->rel2abs($bdir);
@@ -143,22 +148,52 @@ sub genmakefile {
 	if (!defined($$lopt{'noproj'})) {
 		# 5: generate eclipse workspaces
 		foreach my $r ( map { makemake::graph::getNode($g,$n,$_) } grep { $_ ne 'all' && makemake::graph::getNode($g,$n,$_)->flagsHas(['root']) } keys(%usedn)) {
+			my @deplibs = makemake::graph::toNodes($g,$n,makemake::graph::allEdgesFrom($g,$n,$r->n,makemake::set::setNew(['linklib'])));
+			my @depprojects = map { my $id = $_->id;
+				  $id =~ s/\.a$//;
+				  "<project>$id</project>\n"
+			} @deplibs;
+			
 			my %vdirs = (); my $id = $r->id; my $ep0 = undef;
 			my $d = dirname($mfn)."/$id";
 			`mkdir -p $d`;
-			print("Generate $d (".$r->id.")\n") if (!$::OPT{'quiet'});
+			print("Generate $d (".$r->id.")\n") if ($::OPT{'verbose'});
 			
 			my @enodes = grep { makemake::graph::getNode($g,$n,$_)->flagsHas(['enode']) } map { $$_[0] } makemake::graph::deepSearch($g, $n, $r->n, $::eset);
 			   @enodes = map  { my $node = makemake::graph::getNode($g,$n,$_); $vdirs{dirname($$node{'_fname'})} = 1; $node } @enodes;
-			my @vdirs  = map  { print ("Allocate ------ $_\n"); new makemake::eclipse_project::folder($g,$n,{'dir'=>$_}); } grep { $_ ne '.' } keys %vdirs;
+			my @vdirs  = map  { new makemake::eclipse_project::folder($g,$n,{'dir'=>$_}); } grep { $_ ne '.' } keys %vdirs;
 			if ($addbdir) {
 				$ep0 = new makemake::eclipse_project::folder($g,$n,{'dir'=>$bdir,'pdir'=>$bdir,'_fname'=>$bdir});
 			}
 			
 			print(" + add vdirs [".join(",",@vdirs)."]\n") if ($::OPT{'verbose'});
 			
-			$ep = new makemake::eclipse_project ($g,$n,{'_fname'=>"$pdir/$d/.project" })->merge({'_id'=>$id,'linkedResources'=>[@vdirs,@enodes,$ep0]});
+			$ep = new makemake::eclipse_project ($g,$n,{'_fname'=>"$pdir/$d/.project" })->merge({'_id'=>$id,'linkedResources'=>[@vdirs,@enodes,$ep0],'depprojects'=>[@depprojects]});
 			$ec = new makemake::eclipse_cproject($g,$n,{'_fname'=>"$pdir/$d/.cproject"})->merge({'_id'=>$id,'ext'=>$$r{'_ext'}});
+
+			map { 
+				foreach my $e (makemake::graph::allEdgesTo($g,$n,$_->n,makemake::set::setNew(['compile']))) {
+					my @cflags = grep { defined($_) } makemake::template::flatten($e->get('cflags'));
+					my @cinc = grep { defined($_) } makemake::template::flatten($e->get('cinc'));
+					
+					if (scalar(@cflags) || scalar(@cinc)) {
+						if ($::OPT{verbose}) {
+							print(" ++ cproject.add cinc for [".$_->n."]\n".Dumper(\@cinc)."\n" ) if (scalar(@cinc));
+							print(" ++ cproject.add cflags for [".$_->n."]\n".Dumper(\@cflags)."\n" ) if (scalar(@cflags));
+						}
+						my $o = new makemake::eclipse_cproject::options($g,$n,{'_fname'=>$$e{'_to'}{'_fname'}});
+						
+						$ec->pushOption($g,$n,$o);
+						foreach $cinc (@cinc) {
+							$o->pushinc($cinc);
+						}
+						foreach $cflags (@cflags) {
+							$o->pushdefine($cflags);
+						}
+					}
+					
+				}
+			} @enodes;
 			
 			$ep->saveTo($ep);
 			$ec->saveTo($ec);
@@ -168,10 +203,17 @@ sub genmakefile {
 	}
 }
 	
+sub delete_comments {
+	my ($m) = @_;
+	$m =~ /^\s*#[^\n]*/m;
+	return $m;
+}
+
 sub readdef {
 	
 	my ($g,$n,$fn) = @_; 
 	my $def = makemake::utils::readfile($fn);
+	$def = delete_comments($def);
 	my $optnode = makemake::graph::getOrAddNode($g,$n,'_opt');
 	my $allnode = makemake::graph::getOrAddRule($g,$n,'all')->flags(['root','alias']);
 	my $options = undef;
@@ -238,7 +280,7 @@ sub readdef {
 					$b = $`;
 					$a = eval("{$1}");
 					warn $@ if $@;
-				} elsif ($b =~ /:\s*\{$/) {
+				} elsif ($b =~ /:\s*(\{.*)$/) {
 					# detect multiline bracket at end of line : 
 					# .. 
 					# file1.c { 
@@ -246,10 +288,11 @@ sub readdef {
 					# }
 					# ..
 					$b = $`;
-					my $c = "{"; $i++;
+					my $c = $1; $i++;
 					while ($i < scalar(@b)) {
 						$c = $c."\n".$b[$i];
-						if ($c =~ /^\s*$RE_balanced_brackets/g ) {
+						#print("Check $c\n");
+						if ($c =~ /^\s*$RE_balanced_brackets/gs ) {
 							$b[$i] = $'; $i--; #'
 							$a = $1;
 							$a = eval("{$a}");
@@ -274,9 +317,10 @@ sub readdef {
 					
 					#print("$b:$o -> $cc\n");
 					
-					my $onode = new makemake::makefile_rule($g,$n,$o);
+					my $onode = new makemake::makefile_rule($g,$n,$o)->merge($a);
 					my $cnode = new makemake::makefile_rule($g,$n,$b)->flags(['enode']);
 					my $_eo = new makemake::makefile_action($g,$n,$pnode,$onode)->trans(['link','var']);
+					#print($onode->n." add....}\n".Dumper($a));
 					my $_ec = new makemake::makefile_action($g,$n,$onode,$cnode)->trans(['compile','var'])->merge($a);
 					$onode->merge({'cc'=>$cc});
 					$bnode = $cnode;
@@ -288,7 +332,7 @@ sub readdef {
 					my $_ea = new makemake::makefile_action($g,$n,$pnode,$anode)->trans(['linklib','var'])->merge($a);
 					$bnode = $anode;
 				} else {
-					confess("Cannot match $b\n");
+					confess("Cannot match $b, note: multiline brackets after name must start with content in next line\n");
 				}
 				if (exists($$a{'gen'})) {
 					my $f = $$a{'gen'}{'from'};
@@ -343,9 +387,10 @@ sub new {
 	bless $s,$c;
 	$s->merge($s_);
 	$$s{'txt'} =<<'TXTEND';
+# snippets
 {{get-set:makefilesnippet}}
 # include files
-{{['wrap'=>'{{makeinclude}} ^']get-set-up:genflagsn.relfname}}
+{{['wrap'=>"{{makeinclude}} ^\n"]get-set-up:genflagsn.relfname}}
 # parts:
 {{parts}}
 
@@ -981,7 +1026,7 @@ sub setfname {
 	$basen = $$s->fname(@_) if (UNIVERSAL::can($base,'fname'));
 	my $dbasen = dirname($basen);
 	$$s{'_fname'} = $dbasen."/".$fn;
-	print("Relify ".$$s{'_fname'}."\n"); 
+	print("Relify ".$$s{'_fname'}."\n") if ($::OPT{'verbose'}); 
 	return $$s{'_fname'};
 }
 
@@ -1044,7 +1089,7 @@ sub getValsUp {
 
 sub getVals {
 	my ($s,$n) = (shift,shift);
-	#print (" *get $n\n");
+	#print (" *get ".$s->n." $n\n");
 	my @n = makemake::graph::deepSearchReverseE($$s{'_g'},$$s{'_n'},$s->n,makemake::set::setNew(['var']));
 	my @v = map { 
 		local $Data::Dumper::Maxdepth = 1;
@@ -1094,7 +1139,12 @@ sub _merge {
 		}
 	}
 }
-sub convSlash { my ($s,$_fn) = @_; $_fn =~ s/[\\]/\//gs; return $_fn; }
+# replace "\\" with "\", replace "\" with "/", replace '\n' with "\n"
+sub convSlash { my ($s,$_fn) = @_; $_fn =~ s/\\/foo-rep-before-sub/gs; $_fn =~ s/\n/\n/gs; $_fn =~ s/[\\]/\//gs; $_fn =~ s/foo-rep-before-sub/\\/gs; return $_fn; }
+sub cflags_esc { my ($s) = (shift); my $f = $s->get("cflags",@_); return _cflags_esc($f); }
+sub _cflags_esc { my ($f) = @_; 
+				  $f =~ s/"([^"]+)"/"\\"$1\\""/g; # "texvalue" => "\"texvalue\""
+				  return $f; }
 
 ######################################################################
 
@@ -1142,6 +1192,7 @@ $RE_balanced_brackets =       qr'(?:[\{]((?:(?>[^\{\}]+)|(??{$RE_balanced_bracke
 $RE_IF =                      qr'\{\{if((?:(?>(?:(?!(?:fi\}\}|\{\{if)).)+)|(??{$RE_IF}))*)fi\}\}'s;
 $RE_CALL =                    qr'\{\{call((?:(?>(?:(?!(?:llac\}\}|\{\{call)).)+)|(??{$RE_CALL}))*)llac\}\}'s;
 $RE_FILE =                    qr'\{\{file((?:(?>(?:(?!(?:elif\}\}|\{\{file)).)+)|(??{$RE_FILE}))*)elif\}\}'s;
+$RE_SLASH =                   qr'\{\{/((?:(?>(?:(?!(?:/\}\}|\{\{/)).)+)|(??{$RE_SLASH}))*)/\}\}'s;
 
 sub snippetParam {
 	my ($m) = (shift);
@@ -1153,14 +1204,53 @@ sub snippetParam {
 	}
 }
 
+sub splitpairs {
+	my ($m) = @_; my $i, $j; my @a = ();
+	for ($j = $i = 0; $i < length($m); $i++) {
+		my $p = substr($m,$i);
+		if ($p =~ /^\\\s/) {
+			$i++;
+		} elsif ($p =~ /^(\s+)/) {
+			length($&);
+			push(@a,[substr($m,$j,$i-$j),$&]);
+			$i += length($&);
+			$j = $i;
+			$i--;
+		}
+	}
+	push(@a,[substr($m,$j,$i-$j),'']) if ($i != $j);
+	return [@a];
+}
+
+sub resolve_splitpairs {
+	my ($a) = (shift);
+	return [map { 
+		my ($fn,$sp) = ($$_[0],$$_[1]);
+		my $_fn = makemake::utils::trim($fn);
+		$fn = makemake::node::_relfname($_fn,@_) if (length($_fn) && ( (-f  $_fn) || (-d  $_fn)));
+		[$fn,$sp];
+	}  @$a ];
+}
+
+sub join_splitpairs {
+	my ($a) = @_;
+	return join("", map { $$_[0].$$_[1] } @$a);
+}
+
+sub slashsnippet {
+    my ($self,$m) = (shift,shift);
+	$m = $self->doSub($m,@_);
+	my $a = splitpairs($m,@_); my $i = 0;
+	$a = resolve_splitpairs($a,@_);
+	$m = join_splitpairs($a,@_);
+	return $m;
+}
+
 sub filesnippet {
     my ($self,$m) = (shift,shift);
     $m = makemake::utils::trim($m);
-    my $p = $self->getFirst('pdir',@_);
-    #if (!$self->isAlias($m)) {k
-	$m = File::Spec->abs2rel(File::Spec->rel2abs($m),File::Spec->rel2abs($p));
-    #}
-	return makemake::convSlash($m);
+	$m = makemake::node::_relfname($m,@_);
+	return $m;
 }
 
 sub callsnippet {
@@ -1208,6 +1298,7 @@ sub flatten {
 }
 
 sub asrelfname { return makemake::node::_relfname(@_); }
+sub cflags_esc { return makemake::hashMerge::_cflags_esc(@_); }
 
 # if $$s{$m} is an array of template objects, then call doSub on them
 # as replacement text use $$o{'txt'} or the 'c' argument.
@@ -1219,7 +1310,6 @@ sub snippet {
 	my ($m,$n) = snippetParam($m);
     my $pre = ""; my $post = ""; my $isset = 0;
     my $a = eval("{$n}"); warn $@ if $@; my $r = "";
-	
 	
 	#print("$n\n".Dumper($a));
 	my $v;
@@ -1300,6 +1390,7 @@ sub doSub {
 		$cnt += ($m =~ s/$RE_IF/$self->ifsnippet($1,@a)/gsei);
 		$cnt += ($m =~ s/$RE_CALL/$self->callsnippet($1,@a)/gsei);
 		$cnt += ($m =~ s/$RE_FILE/$self->filesnippet($1,@a)/gsei);
+		$cnt += ($m =~ s/$RE_SLASH/$self->slashsnippet($1,@a)/gsei);
 		$cnt += ($m =~ s/\{$RE_balanced_brackets\}/$self->snippet($1,@a)/gse);
 		$cnt += ($m =~ s/`([^`]+)`/$self->exesnippet($1,@a)/gsei);
 		last if (($ol == length($m)) || $it > 4);
@@ -1315,9 +1406,9 @@ sub saveTo {
 		$m = join("\n",map { makemake::utils::trim($_) } split('[\n]',$m));
 	}
 	my $fn = $s->{'_fname'};
-	print("Writing file $fn\n") if (!$::OPT{'quiet'});
+	print("Writing file $fn\n") if ($::OPT{'verbose'} && !$::OPT{'quiet'});
 	makemake::utils::writefile($fn,$m);
-	print($m) if (!$::OPT{'verbose'} && !$::OPT{'quiet'});
+	print($m) if ($::OPT{'verbose'} && !$::OPT{'quiet'});
 	return $m;
 }
 
@@ -1325,6 +1416,7 @@ sub saveTo {
 
 package makemake::genConfig;
 use File::Temp qw/tempfile/;
+use File::Path;
 
 %tools = 
   (
@@ -1332,7 +1424,7 @@ use File::Temp qw/tempfile/;
    new makemake::tool_compile(\%g,\%n,'gnuc',
 	  {
 	   'cc' => 'gcc',
-	   'txt' => '{{cc}} -c {{["wrap"=>"-I^ "]get-set:srcs.cinc.asrelfname}} {{["wrap"=>"\$(^) "]get-set:srcs.cflags}}  {{["wrap"=>"^ "]get:srcs.relfname}} -o {{get:obj.relfname}} '
+	   'txt' => '{{cc}} -c {{["wrap"=>"-I^ "]get-set:srcs.cinc.asrelfname}} {{["wrap"=>"^ "]get-set:srcs.cflags.cflags_esc}}  {{["wrap"=>"^ "]get:srcs.relfname}} -o {{get:obj.relfname}} '
 	  }),
    'gnuld'=> 
    new makemake::tool_link(\%g,\%n,'gnuld',
@@ -1363,9 +1455,11 @@ sub perl_opts  {
     $$self{'PERLLIB'} = makemake::convSlash(exePerl("use Config; foreach \$l ('installprivlib', 'archlibexp') { if (-f \$Config{\$l}.'/ExtUtils/xsubpp') { print \$Config{\$l}; last; }}"));
     $$self{'PERLMAKE'} = exePerl('use Config; print $Config{make};');
     $$self{'COPY'} = ($::defos =~ /win/ ) ?  'copy /Y' : 'cp';
+	$$self{'curdir'} = File::Spec->rel2abs(".");
+	
     foreach my $m ('PERLLIB','PERLMAKE') {
 		$$self{$m} =~ s/\n$//;
-    } 
+    }
     return $self;
 }
 

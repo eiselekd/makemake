@@ -11,6 +11,7 @@ require "$Bin/Table.pm";
 require "$Bin/makemake.pm";
 require "$Bin/makemake/eclipse.pm";
 $bset = makemake::set::setNew(['build','alias','link','compile','linklib','gen','dep']);
+$lset = makemake::set::setNew(['linklib']);
 $eset = makemake::set::setNew(['build','alias','link','compile','gen','dep']);
 $aset = makemake::set::setNew(['alias']);
 $vset = makemake::set::setNew(['var']);
@@ -23,6 +24,7 @@ sub usage { print("usage: $0 <infiles> [--quiet|--verbose]
     --makefile=[fn]         : create single Makefile
     --builddir=[dir]        : build directoy
     --projdir=[dir]         : project directoy
+    --eclipse-internal=[0|1]: Internal(1) or External build(0,default)
     --dbgtrans              : view path abs2rel transforms
     --dbggraph              : view dependency graph
     --dbgval                : debug value retrival
@@ -41,6 +43,7 @@ GetOptions(\%OPT,qw{
     builddir|b=s
     root=s@
     os=s@
+    eclipse-internal=i
     dbgtrans
     dbggraph
     dbggen

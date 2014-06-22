@@ -1,7 +1,8 @@
+### global options ###
 OPTIONS {
-  CFLAGS => ' -g ',
-  makefilesnippetpost => "-{{makeinclude}} Makefile.inc.mk\n",
-    genflags=>[
+  CFLAGS => ' -ggdb3 ',
+  makefilesnippetpost => "-{{makeinclude}} Makefile.inc.mk\n-{{makeinclude}} perl/Makefile.libperl.mk\n",
+  genflags=>[
     ['{{setfname(Makefile.e.flags.{{osmakeext}}mk)}}', {'trim'=>1},
      "{{convSlash(
        PERL_CCOPTS=`{{if[dos]cd build && nocyg.bat fi}} perl -MExtUtils::Embed -e ccopts`
@@ -11,30 +12,41 @@ OPTIONS {
   ]
 } : []
 
+### perl binidings ###
 e.a { 
-  cinc=>['perl'] 
+    'cflags'  => ['$(PERL_CCOPTS)','$(CFLAGS)'], 
+    'ldflags' =>'PERL_LDOPTS',
+    'cinc'    => ['perl']
 } : [
   e.c : {
-    'cflags'  => ['PERL_CCOPTS','CFLAGS'], 
-    'ldflags' =>'PERL_LDOPTS',
-    'cinc'    => ['perl'],
     'gen' => {
       'from' => 'perl/e.xs',
-      'cmd'  => "{{PERL}} {{PERLLIB}}/ExtUtils/xsubpp -typemap {{PERLLIB}}/ExtUtils/typemap -typemap typemap {{file perl/e.xs elif}} -output \$@" }
+      'cmd'  => "{{PERL}} {{PERLLIB}}/ExtUtils/xsubpp -typemap {{PERLLIB}}/ExtUtils/typemap -typemap typemap {{file perl/e.xs elif}} -output \$@" 
+    }
+  }
+  xsinit.c : {
+    'gen' => {
+      'cmd'  => "{{PERL}} -MExtUtils::Embed -e xsinit -- -o \$@ Lang::e DynaLoader " }
   }
 ]
 
+### lang::e impl ###
 libe.a : [
+  numeric.c 
+  mem.c 
   tok.c 
   parse.c 
 ]
 
+### gtest with perl unittest ###
 libgtest.a { cinc => ['perl/tmp-gtest/gtest-1.7.0/include/','perl/tmp-gtest/gtest-1.7.0/'] }  : [
   perl/tmp-gtest/gtest-1.7.0/src/gtest-all.cc
+  perl/gtest-perl.cc : { 'cflags' => ['{{convSlash(-DGTEST_PERL5LIB="{{curdir}}/perl/lib" )}}'] }
 ]
 
+### test prog ###
 test1.exe { 'cinc' => ['perl/tmp-gtest/gtest-1.7.0/include/','perl/tmp-gtest/gtest-1.7.0/'],
-	    'cflags'  => ['PERL_CCOPTS','CFLAGS'],
+	    'cflags'  => ['$(PERL_CCOPTS)','$(CFLAGS)'],
 	    'ldflags'  => ['PERL_LDOPTS']
 	   } : [
   perl/t/test1.cpp 
