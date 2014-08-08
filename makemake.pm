@@ -309,13 +309,15 @@ sub readdef {
 				my $o = undef;
 				my $bnode;
 				
+				if (exists($$a{'gen'})) {
+					$b = $::OPT{'builddir'}.$b;
+				}
+				
 				if ($b =~ /^(.*)\.c$/ || $b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/) {
 					
 					$o = $::OPT{'builddir'}.basename($1).".o";
 					$cc = 'gcc';
 					$cc = 'g++' if ($b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/);
-					
-					#print("$b:$o -> $cc\n");
 					
 					my $onode = new makemake::makefile_rule($g,$n,$o)->merge($a);
 					my $cnode = new makemake::makefile_rule($g,$n,$b)->flags(['enode']);
@@ -1141,6 +1143,7 @@ sub _merge {
 }
 # replace "\\" with "\", replace "\" with "/", replace '\n' with "\n"
 sub convSlash { my ($s,$_fn) = @_; $_fn =~ s/\\/foo-rep-before-sub/gs; $_fn =~ s/\n/\n/gs; $_fn =~ s/[\\]/\//gs; $_fn =~ s/foo-rep-before-sub/\\/gs; return $_fn; }
+sub convBSlash { my ($s,$_fn) = @_; $_fn =~ s/\\/\//gs; return $_fn; }
 sub cflags_esc { my ($s) = (shift); my $f = $s->get("cflags",@_); return _cflags_esc($f); }
 sub _cflags_esc { my ($f) = @_; 
 				  $f =~ s/"([^"]+)"/"\\"$1\\""/g; # "texvalue" => "\"texvalue\""
@@ -1456,6 +1459,7 @@ sub perl_opts  {
     $$self{'PERLMAKE'} = exePerl('use Config; print $Config{make};');
     $$self{'COPY'} = ($::defos =~ /win/ ) ?  'copy /Y' : 'cp';
 	$$self{'curdir'} = File::Spec->rel2abs(".");
+	$$self{'curdir'} =~ s/\\/\//g;
 	
     foreach my $m ('PERLLIB','PERLMAKE') {
 		$$self{$m} =~ s/\n$//;

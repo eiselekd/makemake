@@ -35,6 +35,17 @@ $ptxt=<<'PEOF';
   <linkedResources>
   {{['c'=>'etxt']get:linkedResources}}
   </linkedResources>
+  <filteredResources>
+		<filter>
+			<id>1403448937531</id>
+			<name>out</name>
+			<type>5</type>
+			<matcher>
+				<id>org.eclipse.ui.ide.multiFilter</id>
+				<arguments>1.0-name-matches-false-false-*</arguments>
+			</matcher>
+		</filter>
+  </filteredResources>
 </projectDescription>
 PEOF
 
@@ -105,6 +116,9 @@ fi}}
 
 
         {{if[$$s{'ext'} eq 'a']
+				<configuration artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="" id="{{cdt.rel.id}}" name="mybuild" parent="cdt.managedbuild.config.gnu.cross.exe.release">
+	    fi}}
+        {{if[$$s{'ext'} eq 'exe']
 				<configuration artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="" id="{{cdt.rel.id}}" name="mybuild" parent="cdt.managedbuild.config.gnu.cross.exe.release">
 	    fi}}
 
