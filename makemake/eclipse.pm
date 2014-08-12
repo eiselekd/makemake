@@ -156,6 +156,18 @@ fi}}
 							<tool id="cdt.managedbuild.tool.gnu.cross.cpp.compiler.1466514914" name="Cross G++ Compiler" superClass="cdt.managedbuild.tool.gnu.cross.cpp.compiler">
 								<option id="gnu.cpp.compiler.option.optimization.level.509641899" name="Optimization Level" superClass="gnu.cpp.compiler.option.optimization.level" useByScannerDiscovery="false" value="gnu.cpp.compiler.optimization.level.most" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.option.debugging.level.1529909255" name="Debug Level" superClass="gnu.cpp.compiler.option.debugging.level" useByScannerDiscovery="false" value="gnu.cpp.compiler.debugging.level.none" valueType="enumerated"/>
+
+                                {{if[$s->hassymoptions]
+								     <option id="gnu.cpp.compiler.option.preprocessor.def.{{gidx0}}" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
+   						             {{symoptions}}
+						         	 </option>
+				                fi}}
+                                {{if[$s->hasincoptions]
+							         <option id="gnu.cpp.compiler.option.include.paths.{{gidx0}}" superClass="gnu.cpp.compiler.option.include.paths" valueType="includePath">
+								     {{incoptions}}
+							         </option>
+				                fi}}
+
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.997568568" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.cross.c.linker.968692083" name="Cross GCC Linker" superClass="cdt.managedbuild.tool.gnu.cross.c.linker"/>
@@ -206,10 +218,6 @@ fi}}
 		</configuration>
 	</storageModule>
 </cproject>
-
-
-
-
 
 CEOF
 

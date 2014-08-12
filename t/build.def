@@ -39,7 +39,9 @@ libe.a { 'cflags'  => ['-Dtestflag1global','-Dtestflag2global'] } : [
 ]
 
 ### gtest with perl unittest ###
-libgtest.a { cinc => ['perl/tmp-gtest/gtest-1.7.0/include/','perl/tmp-gtest/gtest-1.7.0/'] }  : [
+libgtest.a { cinc => ['perl/tmp-gtest/gtest-1.7.0/include/','perl/tmp-gtest/gtest-1.7.0/'],
+	    'cflags'  => ['-Dtestflag1global','-Dtestflag2global']
+	     	      }  : [
   perl/tmp-gtest/gtest-1.7.0/src/gtest-all.cc
   perl/gtest-perl.cc : { 'cflags' => ['{{convSlash(-DGTEST_PERL5LIB="{{curdir}}/perl/lib" )}}'] }
 ]

@@ -161,6 +161,9 @@ sub genmakefile {
 			`mkdir -p $d`;
 			print("Generate $d (".$r->id.")\n") if ($::OPT{'verbose'});
 			
+			my @cflags_p = grep { defined($_) } makemake::template::flatten($r->get('cflags'));
+			my @cinc_p = grep { defined($_) } makemake::template::flatten($r->get('cinc'));
+
 			my @enodes = grep { makemake::graph::getNode($g,$n,$_)->flagsHas(['enode']) } map { $$_[0] } makemake::graph::deepSearch($g, $n, $r->n, $::eset);
 			   @enodes = map  { my $node = makemake::graph::getNode($g,$n,$_); $vdirs{dirname($$node{'_fname'})} = 1; $node } @enodes;
 			my @vdirs  = map  { new makemake::eclipse_project::folder($g,$n,{'dir'=>$_}); } grep { $_ ne '.' } keys %vdirs;
@@ -172,6 +175,21 @@ sub genmakefile {
 			
 			$ep = new makemake::eclipse_project ($g,$n,{'_fname'=>"$pdir/$d/.project" })->merge({'_id'=>$id,'linkedResources'=>[@vdirs,@enodes,$ep0],'depprojects'=>[@depprojects]});
 			$ec = new makemake::eclipse_cproject($g,$n,{'_fname'=>"$pdir/$d/.cproject"})->merge({'_id'=>$id,'ext'=>$$r{'_ext'}});
+
+
+			if (scalar(@cflags_p) || scalar(@cinc_p)) {
+				#if ($::OPT{verbose}) 
+				{
+					print(" ++ cproject.add cinc for [".$r->id."]\n".Dumper(\@cinc_p)."\n" ) if (scalar(@cinc_p));
+					print(" ++ cproject.add cflags for [".$r->id."]\n".Dumper(\@cflags_p)."\n" ) if (scalar(@cflags_p));
+				}
+				foreach $cinc (@cinc_p) {
+					$ec->pushinc($cinc);
+				}
+				foreach $cflags (@cflags_p) {
+					$ec->pushdefine($cflags);
+				}
+			}
 
 			map { 
 				foreach my $e (makemake::graph::allEdgesTo($g,$n,$_->n,makemake::set::setNew(['compile']))) {
