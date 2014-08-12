@@ -92,7 +92,7 @@ sub new {
 # .cproject nature
 
 package makemake::eclipse_cproject;
-@ISA = ('makemake::template','makemake::node');
+@ISA = ('makemake::template','makemake::node','makemake::eclipse_cproject::options_funcs');
 
 $ctxt=<<'CEOF';
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -137,6 +137,20 @@ fi}}
 							<tool id="{{cdt.gcc.id}}" name="Cross GCC Compiler" superClass="cdt.managedbuild.tool.gnu.cross.c.compiler">
 								<option defaultValue="gnu.c.optimization.level.most" id="gnu.c.compiler.option.optimization.level.1706717527" name="Optimization Level" superClass="gnu.c.compiler.option.optimization.level" useByScannerDiscovery="false" valueType="enumerated"/>
 								<option id="gnu.c.compiler.option.debugging.level.313044254" name="Debug Level" superClass="gnu.c.compiler.option.debugging.level" useByScannerDiscovery="false" value="gnu.c.debugging.level.none" valueType="enumerated"/>
+
+                                {{if[$s->hassymoptions]
+							         <option id="gnu.c.compiler.option.preprocessor.def.symbols.{{gidx0}}" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+   						             {{symoptions}}
+						         	 </option>
+				                fi}}
+                                {{if[$s->hasincoptions]
+							         <option id="gnu.c.compiler.option.include.paths.{{gidx0}}" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
+								     {{incoptions}}
+							         </option>
+				                fi}}
+
+
+
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1509244468" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.cross.cpp.compiler.1466514914" name="Cross G++ Compiler" superClass="cdt.managedbuild.tool.gnu.cross.cpp.compiler">
@@ -204,9 +218,10 @@ sub new {
     my ($c,$g,$n,$s_) = @_;
     my $name = "_eclipse_cproject$idx"; $idx++;
     my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'txt'=>$ctxt,'perfileoptions'=>[],
-	'cdt.rel.id' => 'cdt.managedbuild.config.gnu.cross.exe.release.143346477',
-	'cdt.gcc.id' => 'cdt.managedbuild.tool.gnu.cross.c.compiler.548568518',
-			 'gidx0'=> $gid++
+			 'cdt.rel.id' => 'cdt.managedbuild.config.gnu.cross.exe.release.143346477',
+			 'cdt.gcc.id' => 'cdt.managedbuild.tool.gnu.cross.c.compiler.548568518',
+			 'gidx0'=> $gid++,
+			 'symoptions'=>[], 'incoptions'=>[]
 	};
     bless $s,$c;
     $s->merge($s_) if (defined($s_));;
@@ -216,10 +231,14 @@ sub new {
     return $s;
 }
 
+#sub hasoptions    { my ($s) = @_; return $s->hasincoptions && $s->hassymoptions; }
+#sub hasincoptions { my ($s) = @_; return (scalar(@{$$s{'incoptions'}})); }
+#sub hassymoptions { my ($s) = @_; return (scalar(@{$$s{'symoptions'}})); }
+
 sub pushOption { my ($s,$g,$n,$o) = @_; makemake::graph::addVarEdge($g,$n,$s,$o); push(@{$$s{'perfileoptions'}},$o); }
 
 package makemake::eclipse_cproject::options;
-@ISA = ('makemake::template','makemake::node');
+@ISA = ('makemake::template','makemake::node','makemake::eclipse_cproject::options_funcs');
 
 $ctxt=<<'CTOOLEOF';
 
@@ -254,6 +273,8 @@ sub new {
     return $s;
 }
 
+package makemake::eclipse_cproject::options_funcs;
+
 sub hasoptions    { my ($s) = @_; return $s->hasincoptions && $s->hassymoptions; }
 sub hasincoptions { my ($s) = @_; return (scalar(@{$$s{'incoptions'}})); }
 sub hassymoptions { my ($s) = @_; return (scalar(@{$$s{'symoptions'}})); }
@@ -278,7 +299,6 @@ sub pushinc {
 	$v = subquote($v);
 	push(@{$$s{'incoptions'}}, "<listOptionValue builtIn=\"false\" value=\"$v\"/>");
 }
-
 
 1;
 

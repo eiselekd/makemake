@@ -31,8 +31,8 @@ e.a {
 ]
 
 ### lang::e impl ###
-libe.a : [
-  numeric.c 
+libe.a { 'cflags'  => ['-Dtestflag1global','-Dtestflag2global'] } : [
+  numeric.c : { 'cflags'  => ['-Dtestflag1local','-Dtestflag2local'] }
   mem.c 
   tok.c 
   parse.c 
