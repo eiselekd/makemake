@@ -52,6 +52,8 @@ sub genmakefile {
 		
 		#1: extract the transition rules
 		foreach my $e (@e) {
+
+			
 			$usedn{$e} = 1;
 			my $node = makemake::graph::getNode($g,$n,$e);
 			my @r = ();
@@ -209,6 +211,8 @@ sub delete_comments {
 	return $m;
 }
 
+$ogid = 1;
+
 sub readdef {
 	
 	my ($g,$n,$fn) = @_; 
@@ -221,6 +225,8 @@ sub readdef {
 	makemake::graph::addVarEdge($g,$n,$optnode,$allnode);
 	
 	while($def =~ /($id)\s*$RE_balanced_brackets?\s*:\s*$RE_balanced_squarebrackets/g) {
+		
+		print("Found $1 \n") if ($::OPT{'verbose'});
 		
 		my $pid = makemake::utils::trim($1);
 		my $f = $pid;
@@ -315,19 +321,24 @@ sub readdef {
 				
 				if ($b =~ /^(.*)\.c$/ || $b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/) {
 					
-					$o = $::OPT{'builddir'}.basename($1).".o";
+					$o = $::OPT{'builddir'}."$pid.".basename($1).".o"; #.${ogid}
 					$cc = 'gcc';
 					$cc = 'g++' if ($b =~ /^(.*)\.cpp$/ || $b =~ /^(.*)\.cc$/);
 					
 					my $onode = new makemake::makefile_rule($g,$n,$o)->merge($a);
-					my $cnode = new makemake::makefile_rule($g,$n,$b)->flags(['enode']);
+					my $cnode = makemake::makefile_rule::_new_fn('makemake::makefile_rule',$g,$n,"$pid.".$b,$b)->flags(['enode']); #."$ogid"
+					
+				   #my $cnode = new makemake::makefile_rule($g,$n,$b)->flags(['enode']); #."$ogid"
+					
 					my $_eo = new makemake::makefile_action($g,$n,$pnode,$onode)->trans(['link','var']);
 					#print($onode->n." add....}\n".Dumper($a));
 					my $_ec = new makemake::makefile_action($g,$n,$onode,$cnode)->trans(['compile','var'])->merge($a);
 					$onode->merge({'cc'=>$cc});
 					$bnode = $cnode;
-
+					
 					addToClean($g,$n,$onode);
+					
+					$ogid++;
 					
 				} elsif ($b =~ /^(.*)\.a$/) {
 					my $anode = makemake::graph::getOrAddRule($g,$n,$b);
@@ -398,7 +409,7 @@ sub new {
 
 {{get-set:makefilesnippetpost}}
 TXTEND
-	confess("Multiple nodes with same name\n") if (defined(makemake::graph::getNode_q($g,$n,$name)));
+	confess("Multiple nodes with same name '$name'\n") if (defined(makemake::graph::getNode_q($g,$n,$name)));
     makemake::graph::putNode($g,$n,$s);
 	#$$n{$name} = $s;
 	return $s;
@@ -408,7 +419,42 @@ package makemake::makefile_rule;
 use Data::Dumper;
 @ISA = ('makemake::template','makemake::node');
 my $idx = 0;
+
 sub new {
+	my ($c,$g,$n,$name) = @_;
+	
+	return _new_fn ($c,$g,$n,$name,$name);
+}
+
+sub _new_fn {
+	my ($c,$g,$n,$name,$fn) = @_;
+	$idx++;
+	
+	print(" + ".$name." ".$fn."\n");
+	
+	my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'_fname'=>$fn,'rules'=>[]};
+	bless $s,$c;
+	$$s{'asrule'} = "{{tool}}";
+	$$s{'astgt'} = "{{tgtname}}";
+	$$s{'txt'}=<<'TXTEND';
+# rule "{{n}}"
+{{relfname}} : {{['join'=>' ']get:deps.relfname}}
+{{['wrap'=>"\t^"]rules}}
+TXTEND
+	$$s{'etxt'}=<<'FEOF';
+<link>
+	<name>{{fname}}</name>
+	<type>1</type>
+	<locationURI>{{get:self.releprojectfname}}</locationURI>
+</link>
+FEOF
+
+	$$s{'self'} = $s;
+	makemake::graph::putNode($g,$n,$s);
+	return $s;
+}
+
+sub _new {
 	my ($c,$g,$n,$name) = @_;
 	$idx++;
 	my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'_fname'=>$name,'rules'=>[]};
@@ -432,6 +478,8 @@ FEOF
 	makemake::graph::putNode($g,$n,$s);
 	return $s;
 }
+
+
 sub tgtname {
 	my ($s) = @_;
 	return $s->n;
@@ -478,7 +526,7 @@ sub new {
 	my $name = "_makefile_inc_$idx"; $idx++;
 	my $s = {'_g'=>$g,'_n'=>$n,'_name'=>$name,'mkincs'=>['myfile1']};
 	bless $s,$c;
-	confess("Multiple nodes with same name\n") if (defined(makemake::graph::getNode_q($g,$n,$name)));
+	confess("Multiple nodes with same name '$name'\n") if (defined(makemake::graph::getNode_q($g,$n,$name)));
 	makemake::graph::putNode($g,$n,$s);
 	return $s;
 }
@@ -943,7 +991,7 @@ sub hasVarEdge { my ($g,$n,$root,$set) = @_; my @r = allEdgesFrom($g,$n,$root,ma
 
 sub putNode {
 	my ($g,$n,$node) = @_;
-	confess("Multiple nodes with same name\n") if (defined(getNode_q($g,$n,$node->n)));
+	confess("Multiple nodes with same '".$node->n."' \n") if (defined(getNode_q($g,$n,$node->n)));
 	$$n{$node->n} = $node;
 	return $node;
 }
@@ -1162,7 +1210,7 @@ sub  trim { my $s = shift; $s =~ s/^\s+|\s+$//g; return $s };
 
 sub readfile {
     my ($in) = @_;
-    usage(\*STDOUT) if (length($in) == 0) ;
+    ::usage(\*STDOUT) if (length($in) == 0) ;
     open IN, "$in" or die "Reading \"$in\":".$!;
     local $/ = undef;
     $m = <IN>;
