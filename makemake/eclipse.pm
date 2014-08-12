@@ -228,14 +228,11 @@ $ctxt=<<'CTOOLEOF';
                 {{if[$s->hassymoptions]
 							<option id="gnu.c.compiler.option.preprocessor.def.symbols.{{gidx0}}" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
    						        {{symoptions}}
-								<listOptionValue builtIn="false" value="-DGEN2"/>
 							</option>
 				fi}}
                 {{if[$s->hasincoptions]
 							<option id="gnu.c.compiler.option.include.paths.{{gidx0}}" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
 								{{incoptions}}
-								<listOptionValue builtIn="false" value="test1"/>
-								<listOptionValue builtIn="false" value="test2"/>
 							</option>
 				fi}}
 							<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.{{gidx0}}" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
