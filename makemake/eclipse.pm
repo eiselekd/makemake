@@ -199,13 +199,14 @@ fi}}
 
 CEOF
 
-$idx = 0;
+$idx = 0; $gid = 1140740847;
 sub new {
     my ($c,$g,$n,$s_) = @_;
     my $name = "_eclipse_cproject$idx"; $idx++;
     my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'txt'=>$ctxt,'perfileoptions'=>[],
 	'cdt.rel.id' => 'cdt.managedbuild.config.gnu.cross.exe.release.143346477',
-	'cdt.gcc.id' => 'cdt.managedbuild.tool.gnu.cross.c.compiler.548568518'
+	'cdt.gcc.id' => 'cdt.managedbuild.tool.gnu.cross.c.compiler.548568518',
+			 'gidx0'=> $gid++
 	};
     bless $s,$c;
     $s->merge($s_) if (defined($s_));;
@@ -222,22 +223,22 @@ package makemake::eclipse_cproject::options;
 
 $ctxt=<<'CTOOLEOF';
 
-                <fileInfo id="{{cdt.rel.id}}.1468852773" name="{{fname}}" rcbsApplicability="disable" resourcePath="{{fname}}" toolsToInvoke="{{cdt.gcc.id}}.872262495">
-						<tool id="{{cdt.gcc.id}}.872262495" name="Cross GCC Compiler" superClass="{{cdt.gcc.id}}">
+                <fileInfo id="{{cdt.rel.id}}.{{gidx0}}" name="{{fname}}" rcbsApplicability="disable" resourcePath="{{fname}}" toolsToInvoke="{{cdt.gcc.id}}.{{gidx0}}">
+						<tool id="{{cdt.gcc.id}}.{{gidx0}}" name="Cross GCC Compiler" superClass="{{cdt.gcc.id}}">
                 {{if[$s->hassymoptions]
-							<option id="gnu.c.compiler.option.preprocessor.def.symbols.1140740847" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+							<option id="gnu.c.compiler.option.preprocessor.def.symbols.{{gidx0}}" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
    						        {{symoptions}}
 								<listOptionValue builtIn="false" value="-DGEN2"/>
 							</option>
 				fi}}
                 {{if[$s->hasincoptions]
-							<option id="gnu.c.compiler.option.include.paths.1343393081" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
+							<option id="gnu.c.compiler.option.include.paths.{{gidx0}}" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
 								{{incoptions}}
 								<listOptionValue builtIn="false" value="test1"/>
 								<listOptionValue builtIn="false" value="test2"/>
 							</option>
 				fi}}
-							<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1314903483" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
+							<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.{{gidx0}}" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 						</tool>
 				</fileInfo>
 CTOOLEOF
