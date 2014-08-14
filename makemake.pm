@@ -27,6 +27,12 @@ $RE_balanced_brackets       = qr'(?:[\{]((?:(?>[^\{\}]+)|(??{$RE_balanced_bracke
 
 sub gn { my ($g,$n,$name) = @_; return makemake::graph::getNode($g,$n,$name);};
 
+sub uniquify {
+    my (@a) = @_; my %r = ();
+    my @r = grep { my $o = !exists($r{$_}); $r{$_}=1; $o } @a;
+    return @r;
+}
+
 sub genmakefile {
 	
 	my ($_g,$_n,$mfn,$roota,$lopt) = @_; 
@@ -161,8 +167,8 @@ sub genmakefile {
 			`mkdir -p $d`;
 			print("Generate $d (".$r->id.")\n") if ($::OPT{'verbose'});
 			
-			my @cflags_p = grep { defined($_) } makemake::template::flatten($r->get('cflags'));
-			my @cinc_p = grep { defined($_) } makemake::template::flatten($r->get('cinc'));
+			my @cflags_p = uniquify(grep { defined($_) } makemake::template::flatten($r->get('cflags')));
+			my @cinc_p = uniquify(grep { defined($_) } makemake::template::flatten($r->get('cinc')));
 
 			my @enodes = grep { makemake::graph::getNode($g,$n,$_)->flagsHas(['enode']) } map { $$_[0] } makemake::graph::deepSearch($g, $n, $r->n, $::eset);
 			   @enodes = map  { my $node = makemake::graph::getNode($g,$n,$_); $vdirs{dirname($$node{'_fname'})} = 1; $node } @enodes;
@@ -180,8 +186,8 @@ sub genmakefile {
 			if (scalar(@cflags_p) || scalar(@cinc_p)) {
 				#if ($::OPT{verbose}) 
 				{
-					print(" ++ cproject.add cinc for [".$r->id."]\n".Dumper(\@cinc_p)."\n" ) if (scalar(@cinc_p));
-					print(" ++ cproject.add cflags for [".$r->id."]\n".Dumper(\@cflags_p)."\n" ) if (scalar(@cflags_p));
+					print(" ++ cproject.add cinc_p for [".$r->id."]\n".Dumper(\@cinc_p)."\n" ) if (scalar(@cinc_p));
+					print(" ++ cproject.add cflags_p for [".$r->id."]\n".Dumper(\@cflags_p)."\n" ) if (scalar(@cflags_p));
 				}
 				foreach $cinc (@cinc_p) {
 					$ec->pushinc($cinc);
@@ -193,8 +199,8 @@ sub genmakefile {
 
 			map { 
 				foreach my $e (makemake::graph::allEdgesTo($g,$n,$_->n,makemake::set::setNew(['compile']))) {
-					my @cflags = grep { defined($_) } makemake::template::flatten($e->get('cflags'));
-					my @cinc = grep { defined($_) } makemake::template::flatten($e->get('cinc'));
+					my @cflags = uniquify(grep { defined($_) } makemake::template::flatten($e->get('cflags')));
+					my @cinc = uniquify(grep { defined($_) } makemake::template::flatten($e->get('cinc')));
 					
 					if (scalar(@cflags) || scalar(@cinc)) {
 						if ($::OPT{verbose}) {
@@ -258,6 +264,7 @@ sub readdef {
 			#exit(1);
 			next;
 		}
+		print($b);
 		if (length($b) && (($f =~ /(.+\.a)$/) || ($f =~ /(.+\.exe)$/))) {
 			
 			my $bf,$df,$ld;
@@ -363,7 +370,7 @@ sub readdef {
 					my $_ea = new makemake::makefile_action($g,$n,$pnode,$anode)->trans(['linklib','var'])->merge($a);
 					$bnode = $anode;
 				} else {
-					confess("Cannot match $b, note: multiline brackets after name must start with content in next line\n");
+					confess("Cannot match '$b', note: multiline brackets after name must start with content in next line\n");
 				}
 				if (exists($$a{'gen'})) {
 					my $f = $$a{'gen'}{'from'};
@@ -461,11 +468,15 @@ sub _new_fn {
 TXTEND
 	$$s{'etxt'}=<<'FEOF';
 <link>
-	<name>{{fname}}</name>
+	<name>{{fnamenodown}}</name>
 	<type>1</type>
 	<locationURI>{{get:self.releprojectfname}}</locationURI>
 </link>
 FEOF
+
+	my $nodir = $s->{'_fname'};
+	$nodir =~ s/^([\.\/]*)//g;
+	$$s{'_fnamenodown'} = $nodir;
 
 	$$s{'self'} = $s;
 	makemake::graph::putNode($g,$n,$s);

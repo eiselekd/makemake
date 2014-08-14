@@ -69,7 +69,7 @@ use File::Path;
 
 $eres=<<'FEOF';
 <link>
-	<name>{{dir}}</name>
+	<name>{{dirnodown}}</name>
 	<type>2</type>
 	<locationURI>{{get:self.releprojectfname}}</locationURI>
 </link>
@@ -81,6 +81,11 @@ sub new {
     my $s = {'_g'=>$g,'_n'=>$n,'_id'=>$name,'_name'=>$name,'etxt'=>$eres,'_fname'=>'virtual:/virtual', 'pdir'=>'virtual:/virtual'};
     bless $s,$c;
     $s->merge($s_) if (defined($s_));;
+	
+	my $nodir = $s->{'dir'};
+	$nodir =~ s/^([\.\/]*)//g;
+	$$s{'dirnodown'} = $nodir;
+
     makemake::graph::putNode($g,$n,$s);
  	makemake::addOptEdge($g,$n,$s);
 	return $s;
