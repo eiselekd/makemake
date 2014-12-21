@@ -1459,6 +1459,9 @@ sub snippet {
 		$r = join("\n",map { makemake::utils::trim($_) } split('[\n]',$r));
 		$r = makemake::utils::trim($r);
 	}
+	if (exists($$a{'x'})) {
+		$r =~ s/$$a{'x'}//g;
+	}
     return $r;
 }
 
